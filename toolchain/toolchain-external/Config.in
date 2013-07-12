@@ -921,6 +921,17 @@ config BR2_TOOLCHAIN_EXTERNAL_HAS_THREADS_DEBUG
 	  debugging support. If you don't know, leave the default
 	  value, Buildroot will tell you if it's correct or not.
 
+config BR2_TOOLCHAIN_EXTERNAL_HAS_THREADS_NATIVE
+	bool "Toolchain has NPTL support?"
+	depends on BR2_TOOLCHAIN_EXTERNAL_HAS_THREADS
+	select BR2_TOOLCHAIN_HAS_THREADS_NATIVE
+	default y
+	help
+	  Select this option if your external toolchain has native
+	  POSIX thread library (NPTL) support. If you don't know,
+	  leave the default value, Buildroot will tell you if it's
+	  correct or not.
+
 endif # BR2_TOOLCHAIN_EXTERNAL_CUSTOM_UCLIBC
 
 config BR2_TOOLCHAIN_EXTERNAL_INET_RPC
