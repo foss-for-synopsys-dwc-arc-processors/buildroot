@@ -12,7 +12,7 @@ IOZONE_LICENSE = IOzone license (NO DERIVED WORKS ALLOWED)
 # http://www.iozone.org/docs/Iozone_License.txt
 
 # No threading target is non-AIO as well
-ifeq ($(BR2_TOOLCHAIN_HAS_THREADS),)
+ifeq ($(BR2_TOOLCHAIN_HAS_THREADS_NATIVE),)
 IOZONE_TARGET = linux-noth
 # AIO support not available on uClibc, use the linux (non-aio) target.
 else ifeq ($(BR2_TOOLCHAIN_USES_UCLIBC),y)
