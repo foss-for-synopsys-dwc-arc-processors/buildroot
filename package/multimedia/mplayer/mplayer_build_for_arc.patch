@@ -1,0 +1,31 @@
+--- ./mplayer-1.1/configure	2013-11-29 00:34:29.238297709 -0800
++++ ./MPlayer-1.1_origin/configure	2012-05-22 11:01:51.000000000 -0700
+@@ -955,7 +955,7 @@
+     _target=$(echo $ac_option | cut -d '=' -f 2)
+     ;;
+   --cc=*)
+-    _cc=$(echo $ac_option | cut -d '=' -f 2-)
++    _cc=$(echo $ac_option | cut -d '=' -f 2)
+     ;;
+   --host-cc=*)
+     _host_cc=$(echo $ac_option | cut -d '=' -f 2)
+@@ -2492,10 +2492,6 @@
+   generic)
+     arch='generic'
+     ;;
+-  arc)
+-    arch='arc'
+-    iproc='arc'
+-    ;;
+ 
+   *)
+     echo "The architecture of your CPU ($host_arch) is not supported by this configure script"
+@@ -2593,7 +2589,7 @@
+ 
+ 
+ # Checking for CFLAGS
+-_install_strip=
++_install_strip="-s"
+ if test "$_profile" != "" || test "$_debug" != "" ; then
+   CFLAGS="-O2 $_march $_mcpu $_pipe $_debug $_profile"
+   WARNFLAGS="-W -Wall"
