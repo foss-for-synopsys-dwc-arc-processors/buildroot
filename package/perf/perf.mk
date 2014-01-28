@@ -22,6 +22,10 @@ PERF_MAKE_FLAGS = \
 	WERROR=0 \
 	ASCIIDOC=
 
+ifeq ($(BR2_arc),y)
+	PERF_MAKE_FLAGS += NO_BACKTRACE=1
+endif
+
 ifeq ($(BR2_PACKAGE_ELFUTILS),y)
 	PERF_DEPENDENCIES += elfutils
 else
