@@ -4,9 +4,8 @@
 #
 ################################################################################
 
-UBOOT_TOOLS_VERSION = 2014.01
-UBOOT_TOOLS_SOURCE  = u-boot-$(UBOOT_TOOLS_VERSION).tar.bz2
-UBOOT_TOOLS_SITE    = ftp://ftp.denx.de/pub/u-boot
+UBOOT_TOOLS_VERSION = 071d18c86234c630e3c3810b6bbf7445282472c1
+UBOOT_TOOLS_SITE    = git://github.com/foss-for-synopsys-dwc-arc-processors/u-boot.git
 UBOOT_TOOLS_LICENSE = GPLv2+
 UBOOT_TOOLS_LICENSE_FILES = Licenses/gpl-2.0.txt
 
