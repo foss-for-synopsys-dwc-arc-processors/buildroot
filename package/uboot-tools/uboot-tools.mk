@@ -4,7 +4,7 @@
 #
 ################################################################################
 
-UBOOT_TOOLS_VERSION = 071d18c86234c630e3c3810b6bbf7445282472c1
+UBOOT_TOOLS_VERSION = 3e04495719b2d582fc5b58364b098b4fd328164f
 UBOOT_TOOLS_SITE    = git://github.com/foss-for-synopsys-dwc-arc-processors/u-boot.git
 UBOOT_TOOLS_LICENSE = GPLv2+
 UBOOT_TOOLS_LICENSE_FILES = Licenses/gpl-2.0.txt
