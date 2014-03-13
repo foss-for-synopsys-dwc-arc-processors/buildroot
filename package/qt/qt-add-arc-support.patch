@@ -1,0 +1,175 @@
+From f3d0d72205c0182bdbd12462a4e12815a135c234 Mon Sep 17 00:00:00 2001
+From: Vineet Gupta <vgupta@synopsys.com>
+Date: Tue, 18 Feb 2014 13:09:45 +0530
+Subject: [PATCH] ARC port
+
+Signed-off-by: Vineet Gupta <vgupta@synopsys.com>
+---
+ configure                                          |  6 ++++
+ mkspecs/qws/linux-arc-g++/qmake.conf               | 21 +++++++++++
+ mkspecs/qws/linux-arc-g++/qplatformdefs.h          | 42 ++++++++++++++++++++++
+ .../JavaScriptCore/wtf/text/AtomicString.cpp       |  2 +-
+ src/corelib/arch/qatomic_arch.h                    |  2 ++
+ src/corelib/io/qfilesystemwatcher_inotify.cpp      |  5 +++
+ src/gui/painting/qblendfunctions.cpp               |  2 +-
+ 7 files changed, 78 insertions(+), 2 deletions(-)
+ create mode 100644 mkspecs/qws/linux-arc-g++/qmake.conf
+ create mode 100644 mkspecs/qws/linux-arc-g++/qplatformdefs.h
+
+diff --git a/configure b/configure
+index 460b44692c29..dd998f9346bf 100755
+--- a/configure
++++ b/configure
+@@ -2825,6 +2825,9 @@ if [ "$CFG_EMBEDDED" != "no" ]; then
+                     *86_64)
+                         CFG_EMBEDDED=x86_64
+                         ;;
++                    *arc)
++                        CFG_EMBEDDED=arc
++                        ;;
+                     *)
+                         CFG_EMBEDDED=generic
+                         ;;
+@@ -3299,6 +3302,9 @@ if [ "$PLATFORM" != "$XPLATFORM" -a "$CFG_EMBEDDED" != "no" ]; then
+     arm*)
+         CFG_ARCH=arm
+         ;;
++    arc)
++        CFG_ARCH=arc
++        ;;
+     *)
+         CFG_ARCH="$CFG_EMBEDDED"
+         ;;
+diff --git a/mkspecs/qws/linux-arc-g++/qmake.conf b/mkspecs/qws/linux-arc-g++/qmake.conf
+new file mode 100644
+index 000000000000..2edaf07af7cf
+--- /dev/null
++++ b/mkspecs/qws/linux-arc-g++/qmake.conf
+@@ -0,0 +1,21 @@
++#
++# qmake configuration for building with arc-linux-g++
++#
++
++include(../../common/linux.conf)
++include(../../common/gcc-base-unix.conf)
++include(../../common/g++-unix.conf)
++include(../../common/qws.conf)
++
++# modifications to g++.conf
++QMAKE_CC                = arc-buildroot-linux-uclibc-gcc
++QMAKE_CXX               = arc-buildroot-linux-uclibc-g++
++QMAKE_LINK              = arc-buildroot-linux-uclibc-g++
++QMAKE_LINK_SHLIB        = arc-buildroot-linux-uclibc-g++
++
++# modifications to linux.conf
++QMAKE_AR                = arc-buildroot-linux-uclibc-ar cqs
++QMAKE_OBJCOPY           = arc-buildroot-linux-uclibc-objcopy
++QMAKE_STRIP             = arc-buildroot-linux-uclibc-strip
++
++load(qt_config)
+diff --git a/mkspecs/qws/linux-arc-g++/qplatformdefs.h b/mkspecs/qws/linux-arc-g++/qplatformdefs.h
+new file mode 100644
+index 000000000000..461f3d5589e7
+--- /dev/null
++++ b/mkspecs/qws/linux-arc-g++/qplatformdefs.h
+@@ -0,0 +1,42 @@
++/****************************************************************************
++**
++** Copyright (C) 2013 Digia Plc and/or its subsidiary(-ies).
++** Contact: http://www.qt-project.org/legal
++**
++** This file is part of the qmake spec of the Qt Toolkit.
++**
++** $QT_BEGIN_LICENSE:LGPL$
++** Commercial License Usage
++** Licensees holding valid commercial Qt licenses may use this file in
++** accordance with the commercial license agreement provided with the
++** Software or, alternatively, in accordance with the terms contained in
++** a written agreement between you and Digia.  For licensing terms and
++** conditions see http://qt.digia.com/licensing.  For further information
++** use the contact form at http://qt.digia.com/contact-us.
++**
++** GNU Lesser General Public License Usage
++** Alternatively, this file may be used under the terms of the GNU Lesser
++** General Public License version 2.1 as published by the Free Software
++** Foundation and appearing in the file LICENSE.LGPL included in the
++** packaging of this file.  Please review the following information to
++** ensure the GNU Lesser General Public License version 2.1 requirements
++** will be met: http://www.gnu.org/licenses/old-licenses/lgpl-2.1.html.
++**
++** In addition, as a special exception, Digia gives you certain additional
++** rights.  These rights are described in the Digia Qt LGPL Exception
++** version 1.1, included in the file LGPL_EXCEPTION.txt in this package.
++**
++** GNU General Public License Usage
++** Alternatively, this file may be used under the terms of the GNU
++** General Public License version 3.0 as published by the Free Software
++** Foundation and appearing in the file LICENSE.GPL included in the
++** packaging of this file.  Please review the following information to
++** ensure the GNU General Public License version 3.0 requirements will be
++** met: http://www.gnu.org/copyleft/gpl.html.
++**
++**
++** $QT_END_LICENSE$
++**
++****************************************************************************/
++
++#include "../../linux-g++/qplatformdefs.h"
+diff --git a/src/3rdparty/webkit/Source/JavaScriptCore/wtf/text/AtomicString.cpp b/src/3rdparty/webkit/Source/JavaScriptCore/wtf/text/AtomicString.cpp
+index 9dd655ebba84..bd3ab95b4b65 100644
+--- a/src/3rdparty/webkit/Source/JavaScriptCore/wtf/text/AtomicString.cpp
++++ b/src/3rdparty/webkit/Source/JavaScriptCore/wtf/text/AtomicString.cpp
+@@ -142,7 +142,7 @@ static inline bool equal(StringImpl* string, const UChar* characters, unsigned l
+
+     // FIXME: perhaps we should have a more abstract macro that indicates when
+     // going 4 bytes at a time is unsafe
+-#if CPU(ARM) || CPU(SH4) || CPU(MIPS) || CPU(SPARC)
++#if CPU(ARM) || CPU(SH4) || CPU(MIPS) || CPU(SPARC) || CPU(ARC)
+     const UChar* stringCharacters = string->characters();
+     for (unsigned i = 0; i != length; ++i) {
+         if (*stringCharacters++ != *characters++)
+diff --git a/src/corelib/arch/qatomic_arch.h b/src/corelib/arch/qatomic_arch.h
+index 2207df9c3d96..291a3c6fc0db 100644
+--- a/src/corelib/arch/qatomic_arch.h
++++ b/src/corelib/arch/qatomic_arch.h
+@@ -92,6 +92,8 @@ QT_BEGIN_HEADER
+ #  include "QtCore/qatomic_sh4a.h"
+ #elif defined(QT_ARCH_NACL)
+ #  include "QtCore/qatomic_generic.h"
++#elif defined(QT_ARCH_ARC)
++#  include "QtCore/qatomic_generic.h"
+ #else
+ #  error "Qt has not been ported to this architecture"
+ #endif
+diff --git a/src/corelib/io/qfilesystemwatcher_inotify.cpp b/src/corelib/io/qfilesystemwatcher_inotify.cpp
+index 0b4ba61f572a..27bf3571798d 100644
+--- a/src/corelib/io/qfilesystemwatcher_inotify.cpp
++++ b/src/corelib/io/qfilesystemwatcher_inotify.cpp
+@@ -138,6 +138,11 @@
+ # define __NR_inotify_add_watch 285
+ # define __NR_inotify_rm_watch  286
+ # define __NR_inotify_init1     328
++#elif defined (__arc__)
++# define __NR_inotify_init      1043
++# define __NR_inotify_add_watch 27
++# define __NR_inotify_rm_watch  28
++# define __NR_inotify_init1     26
+ #else
+ # error "This architecture is not supported. Please talk to qt-bugs@trolltech.com"
+ #endif
+diff --git a/src/gui/painting/qblendfunctions.cpp b/src/gui/painting/qblendfunctions.cpp
+index cff59e0d0817..206d6d433375 100644
+--- a/src/gui/painting/qblendfunctions.cpp
++++ b/src/gui/painting/qblendfunctions.cpp
+@@ -309,7 +309,7 @@ template <typename T> void qt_blend_argb24_on_rgb16(uchar *destPixels, int dbpl,
+         const uchar *src = srcPixels + y * sbpl;
+         const uchar *srcEnd = src + srcOffset;
+         while (src < srcEnd) {
+-#if defined(QT_ARCH_ARMV5) || defined(QT_ARCH_POWERPC) || defined(QT_ARCH_SH) || defined(QT_ARCH_AVR32) || (defined(QT_ARCH_WINDOWSCE) && !defined(_X86_)) || (defined(QT_ARCH_SPARC) && defined(Q_CC_GNU)) || (defined(QT_ARCH_INTEGRITY) && !defined(_X86_))
++#if defined(QT_ARCH_ARMV5) || defined(QT_ARCH_POWERPC) || defined(QT_ARCH_SH) || defined(QT_ARCH_AVR32) || (defined(QT_ARCH_WINDOWSCE) && !defined(_X86_)) || (defined(QT_ARCH_SPARC) && defined(Q_CC_GNU)) || (defined(QT_ARCH_INTEGRITY) && !defined(_X86_)) || defined(QT_ARC_ARC)
+             // non-16-bit aligned memory access is not possible on PowerPC,
+             // ARM <v6 (QT_ARCH_ARMV5) & SH & AVR32 & SPARC w/GCC
+             quint16 spix = (quint16(src[2])<<8) + src[1];
+--
+1.8.3.2
+
