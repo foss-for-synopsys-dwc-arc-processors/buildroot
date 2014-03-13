@@ -235,6 +235,8 @@ else ifeq ($(BR2_mips)$(BR2_mipsel),y)
 QT_EMB_PLATFORM = mips
 else ifeq ($(BR2_powerpc),y)
 QT_EMB_PLATFORM = powerpc
+else ifeq ($(BR2_arc),y)
+QT_EMB_PLATFORM = arc
 else
 QT_EMB_PLATFORM = generic
 endif
