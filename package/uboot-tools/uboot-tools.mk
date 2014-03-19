@@ -45,6 +45,7 @@ define UBOOT_TOOLS_INSTALL_TARGET_CMDS
 endef
 
 define HOST_UBOOT_TOOLS_BUILD_CMDS
+	$(MAKE1) -C $(@D) axs101_config
 	$(MAKE1) -C $(@D) 			\
 		HOSTCC="$(HOSTCC)"		\
 		HOSTCFLAGS="$(HOST_CFLAGS)"	\
