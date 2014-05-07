@@ -1,0 +1,31 @@
+From 2ddedc9fcfaa251ec282bf5c56cfadca709cce75 Mon Sep 17 00:00:00 2001
+From: Alexey Brodkin <abrodkin@synopsys.com>
+Date: Wed, 7 May 2014 10:11:09 +0400
+Subject: [PATCH] Revert "Bring in WebKit revisions 139553 and 139921."
+
+This reverts commit e3c44790065894f4e7f98ab097fce22c5bcbbd0a.
+
+Currently "__sync_add_and_fetch_4" is not implemented for ARC so we need to
+fall back to legacy implementation of atomicIncrement/Decrement
+---
+ src/3rdparty/webkit/Source/JavaScriptCore/wtf/Atomics.h | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/src/3rdparty/webkit/Source/JavaScriptCore/wtf/Atomics.h b/src/3rdparty/webkit/Source/JavaScriptCore/wtf/Atomics.h
+index 0bbdcfb..dd6c279 100644
+--- a/src/3rdparty/webkit/Source/JavaScriptCore/wtf/Atomics.h
++++ b/src/3rdparty/webkit/Source/JavaScriptCore/wtf/Atomics.h
+@@ -109,8 +109,8 @@ inline int atomicDecrement(int volatile* addend) { return (int) atomic_sub_value
+ #elif COMPILER(GCC) && !CPU(SPARC64) && !OS(SYMBIAN) // sizeof(_Atomic_word) != sizeof(int) on sparc64 gcc
+ #define WTF_USE_LOCKFREE_THREADSAFEREFCOUNTED 1
+ 
+-inline int atomicIncrement(int volatile* addend) { return __sync_add_and_fetch(addend, 1); }
+-inline int atomicDecrement(int volatile* addend) { return __sync_sub_and_fetch(addend, 1); }
++inline int atomicIncrement(int volatile* addend) { return __gnu_cxx::__exchange_and_add(addend, 1) + 1; }
++inline int atomicDecrement(int volatile* addend) { return __gnu_cxx::__exchange_and_add(addend, -1) - 1; }
+ 
+ #endif
+ 
+-- 
+1.9.0
+
