@@ -104,11 +104,14 @@ HOST_GCC_COMMON_CONF_ENV = \
 # Workaround until it's fixed in 4.5.4 or later
 ifeq ($(ARCH),powerpc)
 ifeq ($(findstring x4.5.,x$(GCC_VERSION)),x4.5.)
-HOST_GCC_COMMON_CONF_OPTS += --disable-target-optspace
+TARGET_CFLAGS := $(subst -Os,,$(TARGET_CFLAGS))
+TARGET_CXXFLAGS := $(subst -Os,,$(TARGET_CXXFLAGS))
 endif
-else
-HOST_GCC_COMMON_CONF_OPTS += --enable-target-optspace
 endif
+
+# Propagate options used for target software building to GCC target libs
+HOST_GCC_COMMON_CONF_ENV += CFLAGS_FOR_TARGET="$(TARGET_CFLAGS)"
+HOST_GCC_COMMON_CONF_ENV += CXXFLAGS_FOR_TARGET="$(TARGET_CXXFLAGS)"
 
 # gcc 4.6.x quadmath requires wchar
 ifneq ($(BR2_TOOLCHAIN_BUILDROOT_WCHAR),y)
