@@ -24,6 +24,8 @@ endif
 
 UCLIBC_INSTALL_STAGING = YES
 
+UCLIBC_EXTRA_CFLAGS = $(TARGET_CFLAGS)
+
 # uclibc is part of the toolchain so disable the toolchain dependency
 UCLIBC_ADD_TOOLCHAIN_DEPENDENCY = NO
 
