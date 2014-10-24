@@ -1,0 +1,6 @@
+#!/bin/sh
+# That will work for both ARC 700 (nsimosci) and HS platforms (nsimosci_hs)
+if dmesg | grep -q "Machine model: snps,nsimosci" ; then
+    ifconfig eth0 192.168.218.2 netmask 255.255.255.0
+    route add default gw 192.168.218.1 eth0
+fi
