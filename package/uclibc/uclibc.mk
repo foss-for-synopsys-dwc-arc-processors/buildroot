@@ -68,6 +68,7 @@ ifeq ($(UCLIBC_TARGET_ARCH),arc)
 UCLIBC_ARC_TYPE = CONFIG_$(call qstrip,$(BR2_UCLIBC_ARC_TYPE))
 define UCLIBC_ARC_TYPE_CONFIG
 	$(call KCONFIG_ENABLE_OPT,$(UCLIBC_ARC_TYPE),$(@D)/.config)
+	$(call KCONFIG_ENABLE_OPT,UCLIBC_HAS_STRING_GENERIC_OPT,$(@D)/.config)
 endef
 endif # arc
 
