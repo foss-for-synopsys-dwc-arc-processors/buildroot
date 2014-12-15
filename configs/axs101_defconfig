@@ -9,6 +9,7 @@ BR2_PACKAGE_HOST_GDB=y
 BR2_TARGET_GENERIC_HOSTNAME="axs101"
 BR2_TARGET_GENERIC_ISSUE="Welcome to the AXS101 Software Development Platform"
 # BR2_TARGET_GENERIC_GETTY is not set
+BR2_TARGET_ASKFIRST_SHELL=y
 BR2_LINUX_KERNEL=y
 BR2_LINUX_KERNEL_CUSTOM_GIT=y
 BR2_LINUX_KERNEL_CUSTOM_REPO_URL="git@github.com/foss-for-synopsys-dwc-arc-processors/linux.git"
