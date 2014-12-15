@@ -24,7 +24,7 @@ null::sysinit:/bin/hostname -F /etc/hostname
 ::sysinit:/etc/init.d/rcS
 
 # Start an "askfirst" shell on the console (whatever that may be)
-::askfirst:-/bin/sh
+#::askfirst:-/bin/sh # ASKFIRST_SHELL
 
 # Put a getty on the serial port
 #ttyS0::respawn:/sbin/getty -L ttyS0 115200 vt100 # GENERIC_SERIAL

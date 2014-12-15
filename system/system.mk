@@ -76,6 +76,15 @@ endif
 TARGET_FINALIZE_HOOKS += SYSTEM_GETTY
 endif
 
+ifeq ($(BR2_TARGET_ASKFIRST_SHELL),y)
+# Add askfirst shell to busybox inittab
+define SYSTEM_ASKFIRST
+	$(SED) '/# ASKFIRST_SHELL$$/s~^.*#~::askfirst:-/bin/sh #~' \
+		$(TARGET_DIR)/etc/inittab
+endef
+TARGET_FINALIZE_HOOKS += SYSTEM_ASKFIRST
+endif
+
 ifeq ($(BR2_TARGET_GENERIC_REMOUNT_ROOTFS_RW),y)
 # Find commented line, if any, and remove leading '#'s
 define SYSTEM_REMOUNT_RW

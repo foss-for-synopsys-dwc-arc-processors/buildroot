@@ -311,6 +311,11 @@ config BR2_TARGET_GENERIC_GETTY_OPTIONS
 endmenu
 endif
 
+config BR2_TARGET_ASKFIRST_SHELL
+	bool "Start an \"askfirst\" shell on the console (whatever that may be)"
+	depends on BR2_INIT_BUSYBOX
+	depends on !BR2_TARGET_GENERIC_GETTY
+
 config BR2_TARGET_GENERIC_REMOUNT_ROOTFS_RW
 	bool "remount root filesystem read-write during boot"
 	default y
