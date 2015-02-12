@@ -1,0 +1,11 @@
+--- make-orig/configure	2015-02-12 20:29:23.297815477 +0300
++++ make-patched/configure	2015-02-12 21:05:30.840022420 +0300
+@@ -10027,7 +10027,7 @@
+ _ACEOF
+ if (eval "$ac_cpp conftest.$ac_ext") 2>&5 |
+   $EGREP "gnu glob" >/dev/null 2>&1; then :
+-  make_cv_sys_gnu_glob=yes
++  make_cv_sys_gnu_glob=no
+ else
+   make_cv_sys_gnu_glob=no
+ fi
