@@ -1,0 +1,20 @@
+#!/bin/sh
+#
+# Start telnet....
+#
+
+case "$1" in
+  start)
+	echo "Starting telnet..."
+	/usr/sbin/telnetd
+	;;
+  stop)
+	;;
+  restart|reload)
+	;;
+  *)
+	echo "Usage: $0 {start|stop|restart}"
+	exit 1
+esac
+
+exit $?

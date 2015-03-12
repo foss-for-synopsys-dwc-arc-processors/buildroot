@@ -45,6 +45,28 @@ config BR2_PACKAGE_BUSYBOX_WATCHDOG_PERIOD
 
 endif
 
+config BR2_PACKAGE_BUSYBOX_STANDALONE_TELNETD
+	bool "Enable telnet daemon on target"
+	depends on !BR2_PACKAGE_XINETD
+	default n
+	help
+	  By default user may interact with target via serial port if set in
+	  kernel's command line with "console" option or as a GENERIC_GETTY here
+	  in Buildroot.
+
+	  Another useful option if target is connected to the network is telnet.
+
+	  For it to work telnet daemon (telnetd) must be installed and
+	  auto-started on target during boot process.
+
+	  Say yes here if you would like to have an ability to telnet on target.
+	  If unsure, say N.
+
+	  WARNING! WARNING!
+	  Telnet connection (especially if there're users with no password)
+	  might be not safe, so on production systems please consider usage of
+	  SSH (provided by Dropbear or OpenSSH packages).
+
 endif
 
 if !BR2_PACKAGE_BUSYBOX # kconfig doesn't support else

@@ -16,6 +16,23 @@ endef
 TARGET_FINALIZE_HOOKS += SYSTEM_SECURETTY
 endif
 
+ifeq ($(BR2_PACKAGE_BUSYBOX_STANDALONE_TELNETD),y)
+define SYSTEM_SECURETTY_PTS
+	grep -q 'pts/0' $(TARGET_DIR)/etc/securetty || \
+		echo 'pts/0' >> $(TARGET_DIR)/etc/securetty
+
+	grep -q 'pts/1' $(TARGET_DIR)/etc/securetty || \
+		echo 'pts/1' >> $(TARGET_DIR)/etc/securetty
+
+	grep -q 'pts/2' $(TARGET_DIR)/etc/securetty || \
+		echo 'pts/2' >> $(TARGET_DIR)/etc/securetty
+
+	grep -q 'pts/3' $(TARGET_DIR)/etc/securetty || \
+		echo 'pts/3' >> $(TARGET_DIR)/etc/securetty
+endef
+TARGET_FINALIZE_HOOKS += SYSTEM_SECURETTY_PTS
+endif
+
 ifneq ($(TARGET_GENERIC_HOSTNAME),)
 define SYSTEM_HOSTNAME
 	mkdir -p $(TARGET_DIR)/etc
