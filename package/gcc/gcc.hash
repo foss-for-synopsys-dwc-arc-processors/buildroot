@@ -7,4 +7,4 @@ sha512  b4c84ebd754c026029d706ef52c4242df4dcadc6a22cc5669b3aa37ac9dc25bc9cd9651f
 # From ftp://gcc.gnu.org/pub/gcc/releases/gcc-4.9.2/sha512.sum
 sha512  e96cba06d572dbe7f382a2b00fd9297dcf9f9219d46a9ad0bd904dc36d5e7db3335e422640b79a27fed6fde91b0731732b94a0e2fbcd47344d6779f8ba1f4f9c  gcc-4.9.2.tar.bz2
 # No hash for the ARC variant, comes from the github-helper:
-none  xxx  gcc-arc-2014.12.tar.gz
+none  xxx  gcc-arc-2015.06-rc1.tar.gz
