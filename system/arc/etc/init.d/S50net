@@ -4,3 +4,11 @@ if dmesg | grep -q "Machine model: snps,nsimosci" ; then
     ifconfig eth0 192.168.218.2 netmask 255.255.255.0
     route add default gw 192.168.218.1 eth0
 fi
+
+# Configure network using DHCP if it's AXS101 or AXS103 board
+if dmesg | grep -q "Machine model: snps,axs10[13]" ; then
+    ifconfig eth0 up
+    # udhcpc may fail to configure an interface and hang
+    # forever. With -b it goes to background in this case.
+    udhcpc -b
+fi
