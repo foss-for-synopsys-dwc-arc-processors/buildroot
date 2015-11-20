@@ -5,3 +5,4 @@ sha512	17a5138277a31685a5c2a841cb47ed9bc4626ea617b8ca77750513b300299f4fbbffe5049
 # No hash for the ARC & microblaze variants, comes from the github-helper:
 none	xxx	gdb-arc-2015.12-gdb.tar.gz
 none	xxx	gdb-6be65fb56ea6694a9260733a536a023a1e2d4d57.tar.gz
+none	xxx     gdb-arc-snapshot.tar.gz
