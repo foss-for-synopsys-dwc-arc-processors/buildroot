@@ -1,4 +1,8 @@
 #!/bin/sh
+
+# Bring up loopback device
+ifconfig lo up
+
 # That will work for both ARC 700 (nsimosci) and HS platforms (nsimosci_hs)
 if dmesg | grep -q "Machine model: snps,nsimosci" ; then
     ifconfig eth0 192.168.218.2 netmask 255.255.255.0
