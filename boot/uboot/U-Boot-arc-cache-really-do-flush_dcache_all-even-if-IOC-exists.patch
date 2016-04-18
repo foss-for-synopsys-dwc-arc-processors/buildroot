@@ -1,0 +1,45 @@
+From patchwork Mon Apr 18 10:28:39 2016
+Content-Type: text/plain; charset="utf-8"
+MIME-Version: 1.0
+Content-Transfer-Encoding: 7bit
+Subject: [U-Boot] arc/cache: really do flush_dcache_all() even if IOC exists
+From: Alexey Brodkin <Alexey.Brodkin@synopsys.com>
+X-Patchwork-Id: 611647
+Message-Id: <1460975319-6187-1-git-send-email-abrodkin@synopsys.com>
+To: u-boot@lists.denx.de
+Cc: Alexey Brodkin <Alexey.Brodkin@synopsys.com>
+Date: Mon, 18 Apr 2016 13:28:39 +0300
+
+flush_dcache_all() is used in the very end of U-Boot self relocation
+to write back all copied and then patched code and data to their
+new location in the very end of available memory space.
+
+Since that has nothing to do with IO (i.e. no external DMA happens
+here) IOC won't help here and we need to write back data cache contents
+manually.
+
+Signed-off-by: Alexey Brodkin <abrodkin@synopsys.com>
+---
+ arch/arc/lib/cache.c | 7 ++-----
+ 1 file changed, 2 insertions(+), 5 deletions(-)
+
+diff --git a/arch/arc/lib/cache.c b/arch/arc/lib/cache.c
+index 56988dd..d1fb661 100644
+--- a/arch/arc/lib/cache.c
++++ b/arch/arc/lib/cache.c
+@@ -430,13 +430,10 @@ void invalidate_dcache_all(void)
+ 
+ void flush_dcache_all(void)
+ {
+-#ifdef CONFIG_ISA_ARCV2
+-	if (!ioc_exists)
+-#endif
+-		__dc_entire_op(OP_FLUSH);
++	__dc_entire_op(OP_FLUSH);
+ 
+ #ifdef CONFIG_ISA_ARCV2
+-	if (slc_exists && !ioc_exists)
++	if (slc_exists)
+ 		__slc_entire_op(OP_FLUSH);
+ #endif
+ }

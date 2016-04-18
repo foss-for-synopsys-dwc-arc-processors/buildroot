@@ -1,0 +1,58 @@
+From 9a6dd15b56b5bb005290d0e4f51e76d384b6c1e6 Mon Sep 17 00:00:00 2001
+From: Alexey Brodkin <abrodkin@synopsys.com>
+Date: Mon, 25 Apr 2016 13:21:01 +0300
+Subject: [PATCH] arc/cache: Disable IOC
+
+As of today there's no way in U-Boot to distinguish
+cache operations on data being DMAed to or from memory
+and all those CPUs do them selves on memory.
+
+If IOC block was detected we disabled all cache operations
+and that was completely fine for data being transferred
+by means of DMA simply because IOC did its work and
+made sure data is coherent.
+
+But except DMA that changes memory in U-Boot
+we sometimes need to alter memory contents as well.
+And it applies not only to data but to instructions as well.
+These are 2 very good examples:
+ 1) U-Boot's self relocation
+ 2) Kick-start of slave cores in SMP systems
+
+In both above cases we modify code and if instructions
+caches of CPUs won't be updated until that new code gets
+pushed out of data cache of the core which made modification
+to either SLC or in external memory (if there's no SLC).
+
+So until there's a good and clean solution on cache management for
+2 separate cases (DMA and instructions) we'll disable IOC in U-Boot.
+
+Signed-off-by: Alexey Brodkin <abrodkin@synopsys.com>
+---
+ arch/arc/lib/cache.c | 3 ++-
+ 1 file changed, 2 insertions(+), 1 deletion(-)
+
+diff --git a/arch/arc/lib/cache.c b/arch/arc/lib/cache.c
+index d1fb661..b52d7be 100644
+--- a/arch/arc/lib/cache.c
++++ b/arch/arc/lib/cache.c
+@@ -148,7 +148,7 @@ static void read_decode_cache_bcr_arcv2(void)
+ 		slc_exists = 1;
+ 		slc_line_sz = (slc_cfg.fields.lsz == 0) ? 128 : 64;
+ 	}
+-
++#if 0 /* Disable IOC due to inability to distinguish ops on DMA data and not */
+ 	union {
+ 		struct bcr_clust_cfg {
+ #ifdef CONFIG_CPU_BIG_ENDIAN
+@@ -163,6 +163,7 @@ static void read_decode_cache_bcr_arcv2(void)
+ 	cbcr.word = read_aux_reg(ARC_BCR_CLUSTER);
+ 	if (cbcr.fields.c)
+ 		ioc_exists = 1;
++#endif
+ }
+ #endif
+ 
+-- 
+2.5.0
+
