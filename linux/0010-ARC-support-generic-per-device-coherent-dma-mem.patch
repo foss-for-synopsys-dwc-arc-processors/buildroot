@@ -1,0 +1,25 @@
+From e6b3f75dcf5c07179ad4c4d79d657dbbfac0f578 Mon Sep 17 00:00:00 2001
+From: Alexey Brodkin <abrodkin@synopsys.com>
+Date: Tue, 26 Apr 2016 17:33:05 +0300
+Subject: [PATCH 10/12] ARC: support generic per-device coherent dma mem
+
+Signed-off-by: Alexey Brodkin <abrodkin@synopsys.com>
+---
+ arch/arc/Kconfig | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/arch/arc/Kconfig b/arch/arc/Kconfig
+index c22f5d4..939c93d 100644
+--- a/arch/arc/Kconfig
++++ b/arch/arc/Kconfig
+@@ -39,6 +39,7 @@ config ARC
+ 	select PERF_USE_VMALLOC
+ 	select HAVE_DEBUG_STACKOVERFLOW
+ 	select HAVE_DMA_ATTRS
++	select HAVE_GENERIC_DMA_COHERENT
+ 
+ config TRACE_IRQFLAGS_SUPPORT
+ 	def_bool y
+-- 
+2.5.5
+
