@@ -1,0 +1,73 @@
+From a2afd96610c0b0ae5b50cb2761fbba87a7a3765c Mon Sep 17 00:00:00 2001
+From: Lada Trimasova <ltrimas@synopsys.com>
+Date: Thu, 28 Apr 2016 18:09:55 +0300
+Subject: [PATCH] Use frequency config in pre-bootloader
+
+In this release we get rid of hack when frequency depends on cores number.
+Now use frequency config in pre-bootloader.
+
+Signed-off-by: Lada Trimasova <ltrimas@synopsys.com>
+---
+ arch/arc/plat-axs10x/axs10x.c | 44 ++-----------------------------------------
+ 1 file changed, 2 insertions(+), 42 deletions(-)
+
+diff --git a/arch/arc/plat-axs10x/axs10x.c b/arch/arc/plat-axs10x/axs10x.c
+index 1b0f0f4..3fb3de1 100644
+--- a/arch/arc/plat-axs10x/axs10x.c
++++ b/arch/arc/plat-axs10x/axs10x.c
+@@ -390,50 +390,10 @@ axs103_set_freq(unsigned int id, unsigned int fd, unsigned int od)
+ static void __init axs103_early_init(void)
+ {
+ 	/*
+-	 * AXS103 configurations for SMP/QUAD configurations share device tree
+-	 * which defaults to 90 MHz. However recent failures of Quad config
+-	 * revealed P&R timing violations so clamp it down to safe 50 MHz
+-	 * Instead of duplicating defconfig/DT for SMP/QUAD, add a small hack
+-	 *
+-	 * This hack is really hacky as of now. Fix it properly by getting the
+-	 * number of cores as return value of platform's early SMP callback
++	 * In this release we use frequency config in pre-bootloader.
+ 	 */
+-#ifdef CONFIG_ARC_MCIP
+-	unsigned int num_cores = (read_aux_reg(ARC_REG_MCIP_BCR) >> 16) & 0x3F;
+-	if (num_cores > 2)
+-		arc_set_core_freq(50 * 1000000);
+-	else if (num_cores == 2)
+-		arc_set_core_freq(75 * 1000000);
+-#endif
+ 
+-	switch (arc_get_core_freq()/1000000) {
+-	case 33:
+-		axs103_set_freq(1, 1, 1);
+-		break;
+-	case 50:
+-		axs103_set_freq(1, 30, 20);
+-		break;
+-	case 75:
+-		axs103_set_freq(2, 45, 10);
+-		break;
+-	case 90:
+-		axs103_set_freq(2, 54, 10);
+-		break;
+-	case 100:
+-		axs103_set_freq(1, 30, 10);
+-		break;
+-	case 125:
+-		axs103_set_freq(2, 45,  6);
+-		break;
+-	default:
+-		/*
+-		 * In this case, core_frequency derived from
+-		 * DT "clock-frequency" might not match with board value.
+-		 * Hence update it to match the board value.
+-		 */
+-		arc_set_core_freq(axs103_get_freq() * 1000000);
+-		break;
+-	}
++	arc_set_core_freq(axs103_get_freq() * 1000000);
+ 
+ 	pr_info("Freq is %dMHz\n", axs103_get_freq());
+ 
+-- 
+2.5.0
+
