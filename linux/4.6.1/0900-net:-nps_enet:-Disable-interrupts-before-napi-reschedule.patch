@@ -1,0 +1,16 @@
+diff --git a/drivers/net/ethernet/ezchip/nps_enet.c b/drivers/net/ethernet/ezchip/nps_enet.c
+index 085f912..06f0317 100644
+--- a/drivers/net/ethernet/ezchip/nps_enet.c
++++ b/drivers/net/ethernet/ezchip/nps_enet.c
+@@ -205,8 +205,10 @@ static int nps_enet_poll(struct napi_struct *napi, int budget)
+ 		 * re-adding ourselves to the poll list.
+ 		 */
+ 
+-		if (priv->tx_skb && !tx_ctrl_ct)
++		if (priv->tx_skb && !tx_ctrl_ct) {
++			nps_enet_reg_set(priv, NPS_ENET_REG_BUF_INT_ENABLE, 0);
+ 			napi_reschedule(napi);
++		}
+ 	}
+ 
+ 	return work_done;
