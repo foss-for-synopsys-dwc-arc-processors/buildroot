@@ -1,0 +1,169 @@
+From 147c3835446f85d224989a7d6d14654970a56351 Mon Sep 17 00:00:00 2001
+From: Alexey Brodkin <abrodkin@synopsys.com>
+Date: Mon, 6 Jun 2016 10:56:53 +0300
+Subject: [PATCH 17/17] ARC: [nsimosci] Enable ARC PGU on nSIM OSCI virtual
+ platforms
+
+With required ARC PGU updates that allow it to be used on simulation
+platforms we may finally utilize ARC PGU in nSIM OSCI virtual platforms
+with modern Linux kernels.
+
+Signed-off-by: Alexey Brodkin <abrodkin@synopsys.com>
+---
+ arch/arc/boot/dts/nsimosci.dts             | 14 +++++++++++---
+ arch/arc/boot/dts/nsimosci_hs.dts          | 14 +++++++++++---
+ arch/arc/boot/dts/nsimosci_hs_idu.dts      | 14 +++++++++++---
+ arch/arc/configs/nsimosci_defconfig        |  4 ++--
+ arch/arc/configs/nsimosci_hs_defconfig     |  4 ++--
+ arch/arc/configs/nsimosci_hs_smp_defconfig |  6 ++----
+ 6 files changed, 39 insertions(+), 17 deletions(-)
+
+diff --git a/arch/arc/boot/dts/nsimosci.dts b/arch/arc/boot/dts/nsimosci.dts
+index 1c169dc..7245fb6 100644
+--- a/arch/arc/boot/dts/nsimosci.dts
++++ b/arch/arc/boot/dts/nsimosci.dts
+@@ -20,7 +20,7 @@
+ 		/* this is for console on PGU */
+ 		/* bootargs = "console=tty0 consoleblank=0"; */
+ 		/* this is for console on serial */
+-		bootargs = "earlycon=uart8250,mmio32,0xf0000000,115200n8 console=tty0 console=ttyS0,115200n8 consoleblank=0 debug";
++		bootargs = "earlycon=uart8250,mmio32,0xf0000000,115200n8 console=tty0 console=ttyS0,115200n8 consoleblank=0 debug video=640x480-24";
+ 	};
+ 
+ 	aliases {
+@@ -52,9 +52,17 @@
+ 			no-loopback-test = <1>;
+ 		};
+ 
+-		pgu0: pgu@f9000000 {
+-			compatible = "snps,arcpgufb";
++		pguclk: pguclk {
++			#clock-cells = <0>;
++			compatible = "fixed-clock";
++			clock-frequency = <25175000>;
++		};
++
++		pgu@f9000000 {
++			compatible = "snps,arcpgu";
+ 			reg = <0xf9000000 0x400>;
++			clocks = <&pguclk>;
++			clock-names = "pxlclk";
+ 		};
+ 
+ 		ps2: ps2@f9001000 {
+diff --git a/arch/arc/boot/dts/nsimosci_hs.dts b/arch/arc/boot/dts/nsimosci_hs.dts
+index d64a96f..331fa48 100644
+--- a/arch/arc/boot/dts/nsimosci_hs.dts
++++ b/arch/arc/boot/dts/nsimosci_hs.dts
+@@ -20,7 +20,7 @@
+ 		/* this is for console on PGU */
+ 		/* bootargs = "console=tty0 consoleblank=0"; */
+ 		/* this is for console on serial */
+-		bootargs = "earlycon=uart8250,mmio32,0xf0000000,115200n8 console=tty0 console=ttyS0,115200n8 consoleblank=0 debug";
++		bootargs = "earlycon=uart8250,mmio32,0xf0000000,115200n8 console=tty0 console=ttyS0,115200n8 consoleblank=0 debug video=640x480-24";
+ 	};
+ 
+ 	aliases {
+@@ -52,9 +52,17 @@
+ 			no-loopback-test = <1>;
+ 		};
+ 
+-		pgu0: pgu@f9000000 {
+-			compatible = "snps,arcpgufb";
++		pguclk: pguclk {
++			#clock-cells = <0>;
++			compatible = "fixed-clock";
++			clock-frequency = <25175000>;
++		};
++
++		pgu@f9000000 {
++			compatible = "snps,arcpgu";
+ 			reg = <0xf9000000 0x400>;
++			clocks = <&pguclk>;
++			clock-names = "pxlclk";
+ 		};
+ 
+ 		ps2: ps2@f9001000 {
+diff --git a/arch/arc/boot/dts/nsimosci_hs_idu.dts b/arch/arc/boot/dts/nsimosci_hs_idu.dts
+index f6bf0ca..6f6c2af 100644
+--- a/arch/arc/boot/dts/nsimosci_hs_idu.dts
++++ b/arch/arc/boot/dts/nsimosci_hs_idu.dts
+@@ -18,7 +18,7 @@
+ 
+ 	chosen {
+ 		/* this is for console on serial */
+-		bootargs = "earlycon=uart8250,mmio32,0xf0000000,115200n8 console=tty0 console=ttyS0,115200n8 consoleblan=0 debug";
++		bootargs = "earlycon=uart8250,mmio32,0xf0000000,115200n8 console=tty0 console=ttyS0,115200n8 consoleblan=0 debug video=640x480-24";
+ 	};
+ 
+ 	aliases {
+@@ -71,9 +71,17 @@
+ 			no-loopback-test = <1>;
+ 		};
+ 
+-		pgu0: pgu@f9000000 {
+-			compatible = "snps,arcpgufb";
++		pguclk: pguclk {
++			#clock-cells = <0>;
++			compatible = "fixed-clock";
++			clock-frequency = <25175000>;
++		};
++
++		pgu@f9000000 {
++			compatible = "snps,arcpgu";
+ 			reg = <0xf9000000 0x400>;
++			clocks = <&pguclk>;
++			clock-names = "pxlclk";
+ 		};
+ 
+ 		ps2: ps2@f9001000 {
+diff --git a/arch/arc/configs/nsimosci_defconfig b/arch/arc/configs/nsimosci_defconfig
+index 31e1d95..bd9dc0c 100644
+--- a/arch/arc/configs/nsimosci_defconfig
++++ b/arch/arc/configs/nsimosci_defconfig
+@@ -57,8 +57,8 @@ CONFIG_SERIAL_8250_RUNTIME_UARTS=1
+ CONFIG_SERIAL_OF_PLATFORM=y
+ # CONFIG_HW_RANDOM is not set
+ # CONFIG_HWMON is not set
+-CONFIG_FB=y
+-# CONFIG_VGA_CONSOLE is not set
++CONFIG_DRM=y
++CONFIG_DRM_ARCPGU=y
+ CONFIG_FRAMEBUFFER_CONSOLE=y
+ CONFIG_LOGO=y
+ # CONFIG_HID is not set
+diff --git a/arch/arc/configs/nsimosci_hs_defconfig b/arch/arc/configs/nsimosci_hs_defconfig
+index fcae666..0c2966d 100644
+--- a/arch/arc/configs/nsimosci_hs_defconfig
++++ b/arch/arc/configs/nsimosci_hs_defconfig
+@@ -57,8 +57,8 @@ CONFIG_SERIAL_8250_RUNTIME_UARTS=1
+ CONFIG_SERIAL_OF_PLATFORM=y
+ # CONFIG_HW_RANDOM is not set
+ # CONFIG_HWMON is not set
+-CONFIG_FB=y
+-# CONFIG_VGA_CONSOLE is not set
++CONFIG_DRM=y
++CONFIG_DRM_ARCPGU=y
+ CONFIG_FRAMEBUFFER_CONSOLE=y
+ CONFIG_LOGO=y
+ # CONFIG_HID is not set
+diff --git a/arch/arc/configs/nsimosci_hs_smp_defconfig b/arch/arc/configs/nsimosci_hs_smp_defconfig
+index b01b659..e1f20b3 100644
+--- a/arch/arc/configs/nsimosci_hs_smp_defconfig
++++ b/arch/arc/configs/nsimosci_hs_smp_defconfig
+@@ -74,10 +74,8 @@ CONFIG_SERIAL_8250_DW=y
+ CONFIG_SERIAL_OF_PLATFORM=y
+ # CONFIG_HW_RANDOM is not set
+ # CONFIG_HWMON is not set
+-CONFIG_FB=y
+-CONFIG_ARCPGU_RGB888=y
+-CONFIG_ARCPGU_DISPTYPE=0
+-# CONFIG_VGA_CONSOLE is not set
++CONFIG_DRM=y
++CONFIG_DRM_ARCPGU=y
+ CONFIG_FRAMEBUFFER_CONSOLE=y
+ CONFIG_LOGO=y
+ # CONFIG_HID is not set
+-- 
+2.5.5
+
