@@ -1,0 +1,47 @@
+From 16764d69bcbe02a39ec7f0e448abbb6086604f58 Mon Sep 17 00:00:00 2001
+From: Alexey Brodkin <abrodkin@synopsys.com>
+Date: Fri, 17 Jun 2016 17:04:05 +0200
+Subject: [PATCH 19/19] arc: VDK: Add support for UIO
+
+To make the same image usable in both VDK and EVSS.
+
+Signed-off-by: Alexey Brodkin <abrodkin@synopsys.com>
+---
+ arch/arc/boot/dts/vdk_axc003_idu.dtsi   | 9 +++++++++
+ arch/arc/configs/vdk_hs38_smp_defconfig | 2 ++
+ 2 files changed, 11 insertions(+)
+
+diff --git a/arch/arc/boot/dts/vdk_axc003_idu.dtsi b/arch/arc/boot/dts/vdk_axc003_idu.dtsi
+index 31f0fb5..87408d2 100755
+--- a/arch/arc/boot/dts/vdk_axc003_idu.dtsi
++++ b/arch/arc/boot/dts/vdk_axc003_idu.dtsi
+@@ -73,4 +73,13 @@
+ 		device_type = "memory";
+ 		reg = <0x80000000 0x20000000>;	/* 512MiB */
+ 	};
++
++	/* Embedded Vision subsystem UIO mappings; only relevant for EV VDK */
++	uioEV: uio@0xD0000000 {
++		compatible = "generic-uio";
++		reg = <0xD0000000 0x2000 0xD1000000 0x2000 0x90000000 0x10000000 0xC0000000 0x10000000>;
++		reg-names = "ev_gsa", "ev_ctrl", "ev_shared_mem", "ev_code_mem";
++		interrupt-parent = <&mb_intc>;
++		interrupts = < 23 >;
++	};
+ };
+diff --git a/arch/arc/configs/vdk_hs38_smp_defconfig b/arch/arc/configs/vdk_hs38_smp_defconfig
+index 5b876e9..c0e8441 100644
+--- a/arch/arc/configs/vdk_hs38_smp_defconfig
++++ b/arch/arc/configs/vdk_hs38_smp_defconfig
+@@ -80,6 +80,8 @@ CONFIG_USB_OHCI_HCD=y
+ CONFIG_USB_OHCI_HCD_PLATFORM=y
+ CONFIG_USB_STORAGE=y
+ CONFIG_USB_SERIAL=y
++CONFIG_UIO=y
++CONFIG_UIO_PDRV_GENIRQ=y
+ # CONFIG_IOMMU_SUPPORT is not set
+ CONFIG_EXT3_FS=y
+ CONFIG_EXT4_FS=y
+-- 
+2.5.5
+

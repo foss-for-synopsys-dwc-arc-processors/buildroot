@@ -1,0 +1,28 @@
+From 906ee7165a2e6d1e4dc2ad1fce5f9351b5c85660 Mon Sep 17 00:00:00 2001
+From: Alexey Brodkin <abrodkin@synopsys.com>
+Date: Fri, 17 Jun 2016 17:01:37 +0200
+Subject: [PATCH 18/19] arc: VDK: Disable ARC_SMP_HALT_ON_RESET
+
+Current VDK for ARC HS38 SMP is configured as "run on reset" so
+Linux kernel should match this.
+
+Signed-off-by: Alexey Brodkin <abrodkin@synopsys.com>
+---
+ arch/arc/configs/vdk_hs38_smp_defconfig | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/arch/arc/configs/vdk_hs38_smp_defconfig b/arch/arc/configs/vdk_hs38_smp_defconfig
+index 3422f1c..5b876e9 100644
+--- a/arch/arc/configs/vdk_hs38_smp_defconfig
++++ b/arch/arc/configs/vdk_hs38_smp_defconfig
+@@ -16,6 +16,7 @@ CONFIG_ARC_PLAT_AXS10X=y
+ CONFIG_AXS103=y
+ CONFIG_ISA_ARCV2=y
+ CONFIG_SMP=y
++# CONFIG_ARC_SMP_HALT_ON_RESET is not set
+ # CONFIG_ARC_HAS_GRTC is not set
+ CONFIG_ARC_UBOOT_SUPPORT=y
+ CONFIG_ARC_BUILTIN_DTB_NAME="vdk_hs38_smp"
+-- 
+2.5.5
+
