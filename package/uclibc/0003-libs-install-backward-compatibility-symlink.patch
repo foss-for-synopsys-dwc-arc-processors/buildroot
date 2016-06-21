@@ -1,0 +1,220 @@
+From 3901896e9130bb57f9a0bae814c9cee5642fcdae Mon Sep 17 00:00:00 2001
+From: Alexey Brodkin <abrodkin@synopsys.com>
+Date: Tue, 21 Jun 2016 18:31:15 +0300
+Subject: [PATCH] libs: install backward compatibility symlink
+
+Simplify the switch from uClibc to uClibc-ng.
+Apps already built against uClibc-0.9.x.y require .so.0
+libs to present on target which in case of current uClibc-ng is
+not the case and those apps could not be run.
+
+This change creates symlinks from .so.1 to .so.0 for
+most of other libs in the same way as it was done by
+23e96d89b6ab "ldso: install backward compatibility symlink by default"
+
+Signed-off-by: Alexey Brodkin <abrodkin@synopsys.com>
+Cc: Waldemar Brodkorb <wbx@uclibc-ng.org>
+Cc: Vineet Gupta <vgupta@synopsys.com>
+Cc: Anton Kolesov <akolesov@synopsys.com>
+---
+ ldso/libdl/Makefile.in              | 2 ++
+ libc/Makefile.in                    | 4 ++++
+ libcrypt/Makefile.in                | 2 ++
+ libintl/Makefile.in                 | 4 ++++
+ libm/Makefile.in                    | 4 ++++
+ libnsl/Makefile.in                  | 2 ++
+ libpthread/linuxthreads/Makefile.in | 2 ++
+ libpthread/nptl/Makefile.in         | 2 ++
+ libresolv/Makefile.in               | 2 ++
+ librt/Makefile.in                   | 2 ++
+ libubacktrace/Makefile.in           | 4 ++++
+ libutil/Makefile.in                 | 4 ++++
+ 12 files changed, 34 insertions(+)
+
+diff --git a/ldso/libdl/Makefile.in b/ldso/libdl/Makefile.in
+index fe1eb9d..1ba8770 100644
+--- a/ldso/libdl/Makefile.in
++++ b/ldso/libdl/Makefile.in
+@@ -48,6 +48,8 @@ objclean-y += CLEAN_ldso/libdl
+ 
+ $(top_builddir)lib/libdl.so: $(libdl_OUT)/libdl_so.a $(libc.depend)
+ 	$(call link.so,$(libdl_FULL_NAME),$(ABI_VERSION))
++	# link for backward compatibility
++	$(call link.so,$(libdl_FULL_NAME),0)
+ 
+ $(libdl_OUT)/libdl_so.a: $(libdl-so-y)
+ 	$(Q)$(RM) $@
+diff --git a/libc/Makefile.in b/libc/Makefile.in
+index 2abc77d..8ed8a75 100644
+--- a/libc/Makefile.in
++++ b/libc/Makefile.in
+@@ -60,9 +60,13 @@ OUTPUT_FORMAT = $(CC) $(CFLAGS) -Wl,--verbose 2>&1 | $(SED) -n '/OUTPUT_FORMAT/,
+ ifeq ($(DOMULTI),n)
+ $(libc.depend): $(libc_OUT)/libc_so.a $(LIBS-libc.so)
+ 	$(call link.so,$(libc_FULL_NAME),$(ABI_VERSION))
++	# link for backward compatibility
++	$(call link.so,$(libc_FULL_NAME),0)
+ else
+ $(libc.depend): $(libc_OUT)/libc.oS $(libc-nomulti-y:.o=.oS) | $(LIBS-libc.so)
+ 	$(call linkm.so,$(libc_FULL_NAME),$(ABI_VERSION))
++	# link for backward compatibility
++	$(call linkm.so,$(libc_FULL_NAME),0)
+ endif
+ 	$(Q)$(RM) $@
+ 	$(Q)cat $(top_srcdir)extra/scripts/format.lds > $@.tmp
+diff --git a/libcrypt/Makefile.in b/libcrypt/Makefile.in
+index 94753f4..f0ee24d 100644
+--- a/libcrypt/Makefile.in
++++ b/libcrypt/Makefile.in
+@@ -46,9 +46,11 @@ else
+ $(top_builddir)lib/libcrypt.so: $(libcrypt_OUT)/libcrypt_so.a $(libc.depend)
+ endif
+ 	$(call link.so,$(libcrypt_FULL_NAME),$(ABI_VERSION))
++	$(call link.so,$(libcrypt_FULL_NAME),0)
+ else
+ $(top_builddir)lib/libcrypt.so: $(libcrypt_OUT)/libcrypt.oS | $(libc.depend)
+ 	$(call linkm.so,$(libcrypt_FULL_NAME),$(ABI_VERSION))
++	$(call linkm.so,$(libcrypt_FULL_NAME),0)
+ endif
+ 
+ $(libcrypt_OUT)/libcrypt_so.a: $(libcrypt-so-y)
+diff --git a/libintl/Makefile.in b/libintl/Makefile.in
+index 22ae70c..39b39a5 100644
+--- a/libintl/Makefile.in
++++ b/libintl/Makefile.in
+@@ -48,9 +48,13 @@ else
+ $(top_builddir)lib/libintl.so: $(libintl_OUT)/libintl_so.a $(libc.depend)
+ endif
+ 	$(call link.so,$(libintl_FULL_NAME),$(ABI_VERSION))
++	# link for backward compatibility
++	$(call link.so,$(libintl_FULL_NAME),0)
+ else
+ $(top_builddir)lib/libintl.so: $(libintl_OUT)/libintl.oS | $(libc.depend)
+ 	$(call linkm.so,$(libintl_FULL_NAME),$(ABI_VERSION))
++	# link for backward compatibility
++	$(call linkm.so,$(libintl_FULL_NAME),0)
+ endif
+ 
+ $(libintl_OUT)/libintl_so.a: $(libintl-so-y)
+diff --git a/libm/Makefile.in b/libm/Makefile.in
+index f0e5528..6591542 100644
+--- a/libm/Makefile.in
++++ b/libm/Makefile.in
+@@ -306,9 +306,13 @@ else
+ $(top_builddir)lib/libm.so: $(libm_OUT)/libm_so.a $(libc.depend)
+ endif
+ 	$(call link.so,$(libm_FULL_NAME),$(ABI_VERSION))
++	# link for backward compatibility
++	$(call link.so,$(libm_FULL_NAME),0)
+ else
+ $(top_builddir)lib/libm.so: $(libm_OUT)/libm.oS | $(libc.depend)
+ 	$(call linkm.so,$(libm_FULL_NAME),$(ABI_VERSION))
++	# link for backward compatibility
++	$(call linkm.so,$(libm_FULL_NAME),0)
+ endif
+ 
+ $(libm_OUT)/libm_so.a: $(libm-so-y)
+diff --git a/libnsl/Makefile.in b/libnsl/Makefile.in
+index 333c490..e79268c 100644
+--- a/libnsl/Makefile.in
++++ b/libnsl/Makefile.in
+@@ -39,6 +39,8 @@ else
+ $(top_builddir)lib/libnsl.so: $(libnsl_OUT)/libnsl_so.a $(libc.depend)
+ endif
+ 	$(call link.so,$(libnsl_FULL_NAME),$(ABI_VERSION))
++	# link for backward compatibility
++	$(call link.so,$(libnsl_FULL_NAME),0)
+ 
+ $(libnsl_OUT)/libnsl_so.a: $(libnsl-so-y)
+ 	$(Q)$(RM) $@
+diff --git a/libpthread/linuxthreads/Makefile.in b/libpthread/linuxthreads/Makefile.in
+index c1ec1c9..1c6aa06 100644
+--- a/libpthread/linuxthreads/Makefile.in
++++ b/libpthread/linuxthreads/Makefile.in
+@@ -85,6 +85,8 @@ lib-so-$(UCLIBC_HAS_THREADS) += $(top_builddir)lib/libpthread.so
+ #ifeq ($(DOMULTI),n)
+ $(top_builddir)lib/libpthread.so: $(libpthread_OUT)/libpthread_so.a $(libc.depend) $(top_builddir)lib/libpthread_nonshared.a
+ 	$(call link.so,$(libpthread_FULL_NAME),$(ABI_VERSION))
++	# link for backward compatibility
++	$(call link.so,$(libpthread_FULL_NAME),0)
+ #else
+ #$(top_builddir)lib/libpthread.so: $(libpthread_OUT)/libpthread.oS | $(libc.depend) $(top_builddir)lib/libpthread_nonshared.a
+ #	$(call linkm.so,$(libpthread_FULL_NAME),$(ABI_VERSION))
+diff --git a/libpthread/nptl/Makefile.in b/libpthread/nptl/Makefile.in
+index 8261fce..f0d5ad6 100644
+--- a/libpthread/nptl/Makefile.in
++++ b/libpthread/nptl/Makefile.in
+@@ -76,6 +76,8 @@ lib-so-$(UCLIBC_HAS_THREADS) += $(top_builddir)lib/libpthread.so
+ 
+ $(top_builddir)lib/libpthread.so: $(libpthread_OUT)/libpthread_so.a $(libc.depend) $(libdl.depend) $(top_builddir)lib/libpthread_nonshared.a
+ 	$(call link.so,$(libpthread_FULL_NAME),$(ABI_VERSION))
++	# link for backward compatibility
++	$(call link.so,$(libpthread_FULL_NAME),0)
+ 	$(Q)cat $(top_srcdir)extra/scripts/format.lds > $@.tmp
+ 	$(Q)echo "GROUP ( $(notdir $@).$(ABI_VERSION) libpthread_nonshared.a )" >> $@.tmp
+ 	$(Q)mv $@.tmp $@
+diff --git a/libresolv/Makefile.in b/libresolv/Makefile.in
+index fa3c341..89ef4f7 100644
+--- a/libresolv/Makefile.in
++++ b/libresolv/Makefile.in
+@@ -39,6 +39,8 @@ else
+ $(top_builddir)lib/libresolv.so: $(libresolv_OUT)/libresolv_so.a $(libc.depend)
+ endif
+ 	$(call link.so,$(libresolv_FULL_NAME),$(ABI_VERSION))
++	# link for backward compatibility
++	$(call link.so,$(libresolv_FULL_NAME),0)
+ 
+ $(libresolv_OUT)/libresolv_so.a: $(libresolv-so-y)
+ 	$(Q)$(RM) $@
+diff --git a/librt/Makefile.in b/librt/Makefile.in
+index 1536a5c..88f15f9 100644
+--- a/librt/Makefile.in
++++ b/librt/Makefile.in
+@@ -73,6 +73,8 @@ else
+ $(top_builddir)lib/librt.so: $(librt_OUT)/librt_so.a $(librt-dep-y)
+ endif
+ 	$(call link.so,$(librt_FULL_NAME),$(ABI_VERSION))
++	# link for backward compatibility
++	$(call link.so,$(librt_FULL_NAME),0)
+ 
+ $(librt_OUT)/librt_so.a: $(librt-so-y)
+ 	$(Q)$(RM) $@
+diff --git a/libubacktrace/Makefile.in b/libubacktrace/Makefile.in
+index 311f1e3..587eaf6 100644
+--- a/libubacktrace/Makefile.in
++++ b/libubacktrace/Makefile.in
+@@ -62,9 +62,13 @@ objclean-y += CLEAN_libubacktrace
+ ifeq ($(DOMULTI),n)
+ $(top_builddir)lib/libubacktrace.so: $(libubacktrace_OUT)/libubacktrace_so.a $(libdl.depend)
+ 	$(call link.so,$(libubacktrace_FULL_NAME),$(ABI_VERSION))
++	# link for backward compatibility
++	$(call link.so,$(libubacktrace_FULL_NAME),0)
+ else
+ $(top_builddir)lib/libubacktrace.so: $(libubacktrace_OUT)/libubacktrace.oS | $(libdl.depend)
+ 	$(call linkm.so,$(libubacktrace_FULL_NAME),$(ABI_VERSION))
++	# link for backward compatibility
++	$(call linkm.so,$(libubacktrace_FULL_NAME),0)
+ endif
+ 
+ $(libubacktrace_OUT)/libubacktrace_so.a: $(libubacktrace-so-y)
+diff --git a/libutil/Makefile.in b/libutil/Makefile.in
+index 98b178e..7759482 100644
+--- a/libutil/Makefile.in
++++ b/libutil/Makefile.in
+@@ -55,9 +55,13 @@ else
+ $(top_builddir)lib/libutil.so: $(libutil_OUT)/libutil_so.a $(libc.depend)
+ endif
+ 	$(call link.so,$(libutil_FULL_NAME),$(ABI_VERSION))
++	# link for backward compatibility
++	$(call link.so,$(libutil_FULL_NAME),0)
+ else
+ $(top_builddir)lib/libutil.so: $(libutil_OUT)/libutil.oS | $(libc.depend)
+ 	$(call linkm.so,$(libutil_FULL_NAME),$(ABI_VERSION))
++	# link for backward compatibility
++	$(call linkm.so,$(libutil_FULL_NAME),0)
+ endif
+ 
+ $(libutil_OUT)/libutil_so.a: $(libutil-so-y)
+-- 
+2.5.5
+
