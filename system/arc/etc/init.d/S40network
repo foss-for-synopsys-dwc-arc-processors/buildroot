@@ -11,7 +11,11 @@ fi
 
 # Configure network using DHCP if it's AXS101 or AXS103 board
 if dmesg | grep -q "Machine model: snps,axs10[13]" ; then
-    ifconfig eth0 up
+    # There are actually 4 sets of Locally Administered Address Ranges 
+    # that can be used on your network without fear of conflict:
+    # x2:xx:xx:xx:xx:xx, x6:xx:xx:xx:xx:xx, xA:xx:xx:xx:xx:xx, 
+    # xE:xx:xx:xx:xx:xx
+    ifconfig eth0 hw ether 0A:12:34:56:78:9A up
     # udhcpc may fail to configure an interface and hang
     # forever. With -b it goes to background in this case.
     udhcpc -b
