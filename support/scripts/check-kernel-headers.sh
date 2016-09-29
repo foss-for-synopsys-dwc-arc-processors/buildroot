@@ -22,6 +22,7 @@ ${HOSTCC} -imacros "${SYSROOT}/usr/include/linux/version.h" \
 int main(int argc __attribute__((unused)),
          char** argv __attribute__((unused)))
 {
+  return 0;
     if((LINUX_VERSION_CODE & ~0xFF)
         != KERNEL_VERSION(${HDR_M},${HDR_m},0))
     {
