@@ -90,6 +90,7 @@ GDB_CONF_OPTS = \
 	--with-curses \
 	--without-included-gettext \
 	--disable-werror \
+	--disable-build-with-cxx \
 	--enable-static
 
 ifeq ($(BR2_PACKAGE_GDB_TUI),y)
