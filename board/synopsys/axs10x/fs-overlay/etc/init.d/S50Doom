@@ -1,0 +1,32 @@
+#!/bin/sh
+#
+# run DOOM 
+#
+
+
+
+case "$1" in
+  start)
+    echo "Starting Doom..."
+    /usr/sbin/fbset > /etc/fb.modes
+    export SDL_NOMOUSE=1
+    /usr/bin/chocolate-doom &
+    ;;
+  stop)
+    echo -n "Stopping Doom..."
+    ;;
+  restart|reload)
+    "$0" stop
+    "$0" start
+    ;;
+  *)
+    echo $"Usage: $0 {start|stop|restart}"
+    exit 1
+esac
+
+exit $?
+
+
+#fbset > /etc/fb.modes
+#export SDL_NOMOUSE=1 
+#chocolate-doom
