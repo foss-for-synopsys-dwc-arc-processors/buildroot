@@ -1,0 +1,1240 @@
+From 8037c01b04e8bb8f2cdfa4c92ee64003f09d3c5b Mon Sep 17 00:00:00 2001
+From: Eugeniy Paltsev <Eugeniy.Paltsev@synopsys.com>
+Date: Sat, 21 Oct 2017 15:02:44 +0300
+Subject: [PATCH 01/12] ARC: HSDK: Fixup DW SDIO CIU frequency to 50000000Hz
+
+DW sdio controller has external ciu clock devider controlled via
+register in SDIO IP. Due to its unexpected default value
+(it should devide by 1 but it devides by 8)
+SDIO IP uses wrong CIU clock (it should be 100000000Hz but actual
+is 12500000Hz) and works unstable (see STAR 9001204800)
+
+So increase SDIO CIU frequency from actual 12500000Hz to 50000000Hz
+by switching from the default divisor value (div-by-8) to the
+minimum possible value of the divisor (div-by-2) in HSDK platform
+code.
+
+Signed-off-by: Eugeniy Paltsev <Eugeniy.Paltsev@synopsys.com>
+---
+ board/synopsys/hsdk/hsdk.c | 12 +++++++++++-
+ 1 file changed, 11 insertions(+), 1 deletion(-)
+
+diff --git a/board/synopsys/hsdk/hsdk.c b/board/synopsys/hsdk/hsdk.c
+index 7b562556e6..7641978a7b 100644
+--- a/board/synopsys/hsdk/hsdk.c
++++ b/board/synopsys/hsdk/hsdk.c
+@@ -26,6 +26,10 @@ int board_early_init_f(void)
+ 	return 0;
+ }
+ 
++#define SDIO_BASE              (ARC_PERIPHERAL_BASE + 0xA000)
++#define SDIO_UHS_REG_EXT       (SDIO_BASE + 0x108)
++#define SDIO_UHS_REG_EXT_DIV_2 (2 << 30)
++
+ int board_mmc_init(bd_t *bis)
+ {
+ 	struct dwmci_host *host = NULL;
+@@ -36,12 +40,18 @@ int board_mmc_init(bd_t *bis)
+ 		return 1;
+ 	}
+ 
++	/*
++	 * Switch SDIO external ciu clock divider from default div-by-8 to
++	 * minimum possible div-by-2.
++	 */
++	writel(SDIO_UHS_REG_EXT_DIV_2, (void __iomem *) SDIO_UHS_REG_EXT);
++
+ 	memset(host, 0, sizeof(struct dwmci_host));
+ 	host->name = "Synopsys Mobile storage";
+ 	host->ioaddr = (void *)ARC_DWMMC_BASE;
+ 	host->buswidth = 4;
+ 	host->dev_index = 0;
+-	host->bus_hz = 100000000;
++	host->bus_hz = 50000000;
+ 
+ 	add_dwmci(host, host->bus_hz / 2, 400000);
+ 
+-- 
+2.11.0
+
+
+From cc0a64f2eb67b7c7b69e9021fbf8c6b5df6eb22b Mon Sep 17 00:00:00 2001
+From: Eugeniy Paltsev <Eugeniy.Paltsev@synopsys.com>
+Date: Fri, 13 Oct 2017 15:38:31 +0300
+Subject: [PATCH 02/12] ARC: HSDK: introduce CREG GPIO driver
+
+The HSDK can manage some pins via CREG registers block.
+
+Signed-off-by: Eugeniy Paltsev <Eugeniy.Paltsev@synopsys.com>
+---
+ MAINTAINERS                   |   6 +++
+ drivers/gpio/Kconfig          |   7 +++
+ drivers/gpio/Makefile         |   1 +
+ drivers/gpio/hsdk-creg-gpio.c | 110 ++++++++++++++++++++++++++++++++++++++++++
+ 4 files changed, 124 insertions(+)
+ create mode 100644 drivers/gpio/hsdk-creg-gpio.c
+
+diff --git a/MAINTAINERS b/MAINTAINERS
+index b167b028ec..2a20b940c3 100644
+--- a/MAINTAINERS
++++ b/MAINTAINERS
+@@ -59,6 +59,12 @@ S:	Maintained
+ T:	git git://git.denx.de/u-boot-arc.git
+ F:	arch/arc/
+ 
++ARC HSDK CREG GPIO
++M:	Eugeniy Paltsev <Eugeniy.Paltsev@synopsys.com>
++S:	Maintained
++L:	uboot-snps-arc@synopsys.com
++F:	drivers/gpio/hsdk-creg-gpio.c
++
+ ARM
+ M:	Albert Aribaud <albert.u.boot@aribaud.net>
+ S:	Maintained
+diff --git a/drivers/gpio/Kconfig b/drivers/gpio/Kconfig
+index 6240c39539..2acb33bb51 100644
+--- a/drivers/gpio/Kconfig
++++ b/drivers/gpio/Kconfig
+@@ -80,6 +80,13 @@ config IMX_RGPIO2P
+ 	help
+ 	  This driver supports i.MX7ULP Rapid GPIO2P controller.
+ 
++config HSDK_CREG_GPIO
++	bool "HSDK CREG GPIO griver"
++	depends on DM
++	default n
++	help
++	  This driver supports CREG GPIOs on Synopsys HSDK SOC.
++
+ config LPC32XX_GPIO
+ 	bool "LPC32XX GPIO driver"
+ 	depends on DM
+diff --git a/drivers/gpio/Makefile b/drivers/gpio/Makefile
+index 81f55a576b..201d7bfff9 100644
+--- a/drivers/gpio/Makefile
++++ b/drivers/gpio/Makefile
+@@ -54,6 +54,7 @@ obj-$(CONFIG_GPIO_UNIPHIER)	+= gpio-uniphier.o
+ obj-$(CONFIG_ZYNQ_GPIO)		+= zynq_gpio.o
+ obj-$(CONFIG_VYBRID_GPIO)	+= vybrid_gpio.o
+ obj-$(CONFIG_HIKEY_GPIO)	+= hi6220_gpio.o
++obj-$(CONFIG_HSDK_CREG_GPIO)	+= hsdk-creg-gpio.o
+ obj-$(CONFIG_IMX_RGPIO2P)	+= imx_rgpio2p.o
+ obj-$(CONFIG_PIC32_GPIO)	+= pic32_gpio.o
+ obj-$(CONFIG_MVEBU_GPIO)	+= mvebu_gpio.o
+diff --git a/drivers/gpio/hsdk-creg-gpio.c b/drivers/gpio/hsdk-creg-gpio.c
+new file mode 100644
+index 0000000000..8ca807a18f
+--- /dev/null
++++ b/drivers/gpio/hsdk-creg-gpio.c
+@@ -0,0 +1,110 @@
++/*
++ * Synopsys HSDK SDP Generic PLL clock driver
++ *
++ * Copyright (C) 2017 Synopsys
++ * Author: Eugeniy Paltsev <Eugeniy.Paltsev@synopsys.com>
++ *
++ * This file is licensed under the terms of the GNU General Public
++ * License version 2. This program is licensed "as is" without any
++ * warranty of any kind, whether express or implied.
++ */
++
++#include <asm-generic/gpio.h>
++#include <asm/io.h>
++#include <common.h>
++#include <dm.h>
++#include <errno.h>
++#include <linux/printk.h>
++
++DECLARE_GLOBAL_DATA_PTR;
++
++#define HSDK_CREG_MAX_GPIO	8
++
++#define GPIO_ACTIVATE		0x2
++#define GPIO_DEACTIVATE		0x3
++#define GPIO_PIN_MASK		0x3
++#define BIT_PER_GPIO		2
++
++struct hsdk_creg_gpio {
++	uint32_t *regs;
++};
++
++static int hsdk_creg_gpio_set_value(struct udevice *dev, unsigned oft, int val)
++{
++	struct hsdk_creg_gpio *hcg = dev_get_priv(dev);
++	uint32_t reg = readl(hcg->regs);
++	uint32_t cmd = val ? GPIO_DEACTIVATE : GPIO_ACTIVATE;
++
++	reg &= ~(GPIO_PIN_MASK << (oft * BIT_PER_GPIO));
++	reg |=  (cmd << (oft * BIT_PER_GPIO));
++
++	writel(reg, hcg->regs);
++
++	return 0;
++}
++
++static int hsdk_creg_gpio_direction_output(struct udevice *dev, unsigned oft,
++					   int val)
++{
++	hsdk_creg_gpio_set_value(dev, oft, val);
++
++	return 0;
++}
++
++static int hsdk_creg_gpio_direction_input(struct udevice *dev, unsigned oft)
++{
++	pr_err("hsdk-creg-gpio can't be used as input!\n");
++
++	return -ENOTSUPP;
++}
++
++static int hsdk_creg_gpio_get_value(struct udevice *dev, unsigned int oft)
++{
++	struct hsdk_creg_gpio *hcg = dev_get_priv(dev);
++	uint32_t val = readl(hcg->regs);
++
++	val = (val >> (oft * BIT_PER_GPIO)) & GPIO_PIN_MASK;
++	return (val == GPIO_DEACTIVATE) ? 1 : 0;
++}
++
++static const struct dm_gpio_ops hsdk_creg_gpio_ops = {
++	.direction_output	= hsdk_creg_gpio_direction_output,
++	.direction_input	= hsdk_creg_gpio_direction_input,
++	.set_value		= hsdk_creg_gpio_set_value,
++	.get_value		= hsdk_creg_gpio_get_value,
++};
++
++static int hsdk_creg_gpio_probe(struct udevice *dev)
++{
++	struct gpio_dev_priv *uc_priv = dev_get_uclass_priv(dev);
++	struct hsdk_creg_gpio *hcg = dev_get_priv(dev);
++
++	hcg->regs = (uint32_t *)devfdt_get_addr_ptr(dev);
++
++	uc_priv->gpio_count = dev_read_u32_default(dev, "gpio-count", 1);
++	if (uc_priv->gpio_count > HSDK_CREG_MAX_GPIO)
++		uc_priv->gpio_count = HSDK_CREG_MAX_GPIO;
++
++	uc_priv->bank_name = dev_read_string(dev, "gpio-bank-name");
++	if (!uc_priv->bank_name)
++		uc_priv->bank_name = dev_read_name(dev);
++
++	pr_debug("%s GPIO [0x%p] controller with %d gpios probed\n",
++		 uc_priv->bank_name, hcg->regs, uc_priv->gpio_count);
++
++	return 0;
++}
++
++static const struct udevice_id hsdk_creg_gpio_ids[] = {
++	{ .compatible = "snps,hsdk-creg-gpio" },
++	{ }
++};
++
++U_BOOT_DRIVER(gpio_hsdk_creg) = {
++	.name	= "gpio_hsdk_creg",
++	.id	= UCLASS_GPIO,
++	.ops	= &hsdk_creg_gpio_ops,
++	.probe	= hsdk_creg_gpio_probe,
++	.of_match = hsdk_creg_gpio_ids,
++	.platdata_auto_alloc_size = sizeof(struct hsdk_creg_gpio),
++};
+-- 
+2.11.0
+
+
+From 18e38b2e4194bafb7dc7ff3d29e377389bf9fbe5 Mon Sep 17 00:00:00 2001
+From: Eugeniy Paltsev <Eugeniy.Paltsev@synopsys.com>
+Date: Mon, 25 Sep 2017 19:04:54 +0300
+Subject: [PATCH 03/12] DW SPI: Get clock value from Device Tree
+
+Add option to set spi controller clock frequency via device tree
+using standard clock bindings.
+Old way of setting spi controller clock frequency (via implementation
+of 'cm_get_spi_controller_clk_hz' function in platform specific code)
+remains supported for backward compatibility.
+
+Signed-off-by: Eugeniy Paltsev <Eugeniy.Paltsev@synopsys.com>
+---
+ drivers/spi/designware_spi.c | 65 +++++++++++++++++++++++++++++++++++++++++++-
+ 1 file changed, 64 insertions(+), 1 deletion(-)
+
+diff --git a/drivers/spi/designware_spi.c b/drivers/spi/designware_spi.c
+index 5aa507b2d8..9eb5b1cd04 100644
+--- a/drivers/spi/designware_spi.c
++++ b/drivers/spi/designware_spi.c
+@@ -11,6 +11,7 @@
+  */
+ 
+ #include <common.h>
++#include <clk.h>
+ #include <dm.h>
+ #include <errno.h>
+ #include <malloc.h>
+@@ -18,7 +19,10 @@
+ #include <fdtdec.h>
+ #include <linux/compat.h>
+ #include <asm/io.h>
++/* Only SOCFPGA_GEN5 and SOCFPGA_ARRIA10 uses their clock_manager functions */
++#if defined(CONFIG_TARGET_SOCFPGA_GEN5) || defined(CONFIG_TARGET_SOCFPGA_ARRIA10)
+ #include <asm/arch/clock_manager.h>
++#endif
+ 
+ DECLARE_GLOBAL_DATA_PTR;
+ 
+@@ -94,6 +98,7 @@ struct dw_spi_priv {
+ 	void __iomem *regs;
+ 	unsigned int freq;		/* Default frequency */
+ 	unsigned int mode;
++	unsigned long bus_clk_rate;
+ 
+ 	int bits_per_word;
+ 	u8 cs;			/* chip select pin */
+@@ -176,14 +181,72 @@ static void spi_hw_init(struct dw_spi_priv *priv)
+ 	debug("%s: fifo_len=%d\n", __func__, priv->fifo_len);
+ }
+ 
++static int dw_spi_of_get_clk(struct udevice *bus)
++{
++#if CONFIG_IS_ENABLED(OF_CONTROL) && CONFIG_IS_ENABLED(CLK)
++	struct dw_spi_priv *priv = dev_get_priv(bus);
++	struct clk clk;
++	int ret;
++
++	ret = clk_get_by_index(bus, 0, &clk);
++	if (ret)
++		return -EINVAL;
++
++	ret = clk_enable(&clk);
++	if (ret && ret != -ENOSYS)
++		return ret;
++
++	priv->bus_clk_rate = clk_get_rate(&clk);
++	if (!priv->bus_clk_rate) {
++		clk_disable(&clk);
++		return -EINVAL;
++	}
++
++	clk_free(&clk);
++
++	return 0;
++#else
++	return -ENOSYS;
++#endif
++}
++
++static int dw_spi_get_clk(struct udevice *bus)
++{
++	struct dw_spi_priv *priv = dev_get_priv(bus);
++
++	/* Firstly try to get clock frequency from device tree */
++	if (!dw_spi_of_get_clk(bus))
++		return 0;
++
++	/*
++	 * SOCFPGA_GEN5 and SOCFPGA_ARRIA10 uses cm_get_spi_controller_clk_hz
++	 * function (defined in asm/arch/clock_manager.h) to get spi controller
++	 * clock frequency. So in case of get clock frequency from device
++	 * tree failure rollback to cm_get_spi_controller_clk_hz
++	 */
++#if defined(CONFIG_TARGET_SOCFPGA_GEN5) || defined(CONFIG_TARGET_SOCFPGA_ARRIA10)
++	priv->bus_clk_rate = cm_get_spi_controller_clk_hz();
++#endif
++
++	if (!priv->bus_clk_rate)
++		return -EINVAL;
++
++	return 0;
++}
++
+ static int dw_spi_probe(struct udevice *bus)
+ {
+ 	struct dw_spi_platdata *plat = dev_get_platdata(bus);
+ 	struct dw_spi_priv *priv = dev_get_priv(bus);
++	int ret;
+ 
+ 	priv->regs = plat->regs;
+ 	priv->freq = plat->frequency;
+ 
++	ret = dw_spi_get_clk(bus);
++	if (ret)
++		return ret;
++
+ 	/* Currently only bits_per_word == 8 supported */
+ 	priv->bits_per_word = 8;
+ 
+@@ -369,7 +432,7 @@ static int dw_spi_set_speed(struct udevice *bus, uint speed)
+ 	spi_enable_chip(priv, 0);
+ 
+ 	/* clk_div doesn't support odd number */
+-	clk_div = cm_get_spi_controller_clk_hz() / speed;
++	clk_div = priv->bus_clk_rate / speed;
+ 	clk_div = (clk_div + 1) & 0xfffe;
+ 	dw_writel(priv, DW_SPI_BAUDR, clk_div);
+ 
+-- 
+2.11.0
+
+
+From f2743ecde49605df6297681754b0d2442d89033c Mon Sep 17 00:00:00 2001
+From: Eugeniy Paltsev <Eugeniy.Paltsev@synopsys.com>
+Date: Thu, 5 Oct 2017 18:28:50 +0300
+Subject: [PATCH 04/12] DW SPI: fix tx data loss on FIFO flush
+
+In current implementation if some data still exists in Tx FIFO it
+can be silently flushed, i.e. dropped on disabling of the controller,
+which happens when writing 0 to DW_SPI_SSIENR (it happens in the
+begining of new transfer)
+
+So add wait for current transmit operation to complete to be sure
+that current transmit operation is finished before new one.
+
+Signed-off-by: Eugeniy Paltsev <Eugeniy.Paltsev@synopsys.com>
+---
+ drivers/spi/designware_spi.c | 17 +++++++++++++++++
+ 1 file changed, 17 insertions(+)
+
+diff --git a/drivers/spi/designware_spi.c b/drivers/spi/designware_spi.c
+index 9eb5b1cd04..1517f40718 100644
+--- a/drivers/spi/designware_spi.c
++++ b/drivers/spi/designware_spi.c
+@@ -360,6 +360,7 @@ static int dw_spi_xfer(struct udevice *dev, unsigned int bitlen,
+ {
+ 	struct udevice *bus = dev->parent;
+ 	struct dw_spi_priv *priv = dev_get_priv(bus);
++	unsigned start;
+ 	const u8 *tx = dout;
+ 	u8 *rx = din;
+ 	int ret = 0;
+@@ -416,6 +417,22 @@ static int dw_spi_xfer(struct udevice *dev, unsigned int bitlen,
+ 	/* Start transfer in a polling loop */
+ 	ret = poll_transfer(priv);
+ 
++	/*
++	 * Wait for current transmit operation to complete.
++	 * Otherwise if some data still exists in Tx FIFO it can be
++	 * silently flushed, i.e. dropped on disabling of the controller,
++	 * which happens when writing 0 to DW_SPI_SSIENR which happens
++	 * in the begining of new transfer.
++	 */
++	start = get_timer(0);
++	while (!(dw_readl(priv, DW_SPI_SR) & SR_TF_EMPT) ||
++		(dw_readl(priv, DW_SPI_SR) & SR_BUSY)) {
++		if (get_timer(start) > RX_TIMEOUT) {
++			ret = -ETIMEDOUT;
++			break;
++		}
++	}
++
+ 	return ret;
+ }
+ 
+-- 
+2.11.0
+
+
+From 4341c754442c368a09b92a20ec2887ad2e0d1c55 Mon Sep 17 00:00:00 2001
+From: Eugeniy Paltsev <Eugeniy.Paltsev@synopsys.com>
+Date: Mon, 9 Oct 2017 20:37:35 +0300
+Subject: [PATCH 05/12] DW SPI: fix transmit only mode
+
+In current implementation we get -ETIMEDOUT error when we try to use
+transmit only mode (SPI_TMOD_TO)
+This happens because in transmit only mode input FIFO never gets any data
+which breaks our logic in dw_reader(): we are waiting until RX data will be
+ready in dw_reader, but this newer happens, so we return with error.
+
+Fix that by using SPI_TMOD_TR instead of SPI_TMOD_TO which allows to use
+RX FIFO.
+
+Signed-off-by: Eugeniy Paltsev <Eugeniy.Paltsev@synopsys.com>
+---
+ drivers/spi/designware_spi.c | 6 +++++-
+ 1 file changed, 5 insertions(+), 1 deletion(-)
+
+diff --git a/drivers/spi/designware_spi.c b/drivers/spi/designware_spi.c
+index 1517f40718..59624a3474 100644
+--- a/drivers/spi/designware_spi.c
++++ b/drivers/spi/designware_spi.c
+@@ -382,7 +382,11 @@ static int dw_spi_xfer(struct udevice *dev, unsigned int bitlen,
+ 	else if (rx)
+ 		priv->tmode = SPI_TMOD_RO;
+ 	else
+-		priv->tmode = SPI_TMOD_TO;
++		/*
++		* In transmit only mode (SPI_TMOD_TO) input FIFO never gets
++		* any data which breaks our logic in poll_transfer() above.
++		*/
++		priv->tmode = SPI_TMOD_TR;
+ 
+ 	cr0 &= ~SPI_TMOD_MASK;
+ 	cr0 |= (priv->tmode << SPI_TMOD_OFFSET);
+-- 
+2.11.0
+
+
+From de9ffea89d4358cbc67f5fe3df0cc1f318799446 Mon Sep 17 00:00:00 2001
+From: Eugeniy Paltsev <Eugeniy.Paltsev@synopsys.com>
+Date: Mon, 9 Oct 2017 20:56:50 +0300
+Subject: [PATCH 06/12] DW SPI: refactor poll_transfer functions
+
+There is no sense in waiting for RX data in dw_reader function:
+there is no chance that RX data will appear in RX FIFO if
+RX FIFO is empty after previous TX write in dw_writer function.
+So get rid of this waiting. After that we can get rid of dw_reader
+return value and make it returning void. After that we can get rid
+of dw_reader return value check in poll_transfer function.
+
+With these changes we're getting closer to Linux DW SPI driver.
+
+Signed-off-by: Eugeniy Paltsev <Eugeniy.Paltsev@synopsys.com>
+---
+ drivers/spi/designware_spi.c | 26 ++++----------------------
+ 1 file changed, 4 insertions(+), 22 deletions(-)
+
+diff --git a/drivers/spi/designware_spi.c b/drivers/spi/designware_spi.c
+index 59624a3474..f6fa6dec78 100644
+--- a/drivers/spi/designware_spi.c
++++ b/drivers/spi/designware_spi.c
+@@ -307,28 +307,16 @@ static void dw_writer(struct dw_spi_priv *priv)
+ 	}
+ }
+ 
+-static int dw_reader(struct dw_spi_priv *priv)
++static void dw_reader(struct dw_spi_priv *priv)
+ {
+-	unsigned start = get_timer(0);
+-	u32 max;
++	u32 max = rx_max(priv);
+ 	u16 rxw;
+ 
+-	/* Wait for rx data to be ready */
+-	while (rx_max(priv) == 0) {
+-		if (get_timer(start) > RX_TIMEOUT)
+-			return -ETIMEDOUT;
+-	}
+-
+-	max = rx_max(priv);
+-
+ 	while (max--) {
+ 		rxw = dw_readw(priv, DW_SPI_DR);
+ 		debug("%s: rx=0x%02x\n", __func__, rxw);
+ 
+-		/*
+-		 * Care about rx only if the transfer's original "rx" is
+-		 * not null
+-		 */
++		/* Care about rx if the transfer's original "rx" is not null */
+ 		if (priv->rx_end - priv->len) {
+ 			if (priv->bits_per_word == 8)
+ 				*(u8 *)(priv->rx) = rxw;
+@@ -337,19 +325,13 @@ static int dw_reader(struct dw_spi_priv *priv)
+ 		}
+ 		priv->rx += priv->bits_per_word >> 3;
+ 	}
+-
+-	return 0;
+ }
+ 
+ static int poll_transfer(struct dw_spi_priv *priv)
+ {
+-	int ret;
+-
+ 	do {
+ 		dw_writer(priv);
+-		ret = dw_reader(priv);
+-		if (ret < 0)
+-			return ret;
++		dw_reader(priv);
+ 	} while (priv->rx_end > priv->rx);
+ 
+ 	return 0;
+-- 
+2.11.0
+
+
+From b574967836c3dfe90422adf6a67ade70749b172c Mon Sep 17 00:00:00 2001
+From: Eugeniy Paltsev <Eugeniy.Paltsev@synopsys.com>
+Date: Thu, 5 Oct 2017 16:08:09 +0300
+Subject: [PATCH 07/12] DW SPI: add option to use external gpio for chip select
+
+Add option to use external gpio for chip select. Gpio can be added
+via device tree using standard gpio bindings.
+
+Signed-off-by: Eugeniy Paltsev <Eugeniy.Paltsev@synopsys.com>
+---
+ drivers/spi/designware_spi.c | 51 +++++++++++++++++++++++++++++++++++++++++++-
+ 1 file changed, 50 insertions(+), 1 deletion(-)
+
+diff --git a/drivers/spi/designware_spi.c b/drivers/spi/designware_spi.c
+index f6fa6dec78..6c1d692bb3 100644
+--- a/drivers/spi/designware_spi.c
++++ b/drivers/spi/designware_spi.c
+@@ -10,6 +10,7 @@
+  * SPDX-License-Identifier:	GPL-2.0
+  */
+ 
++#include <asm-generic/gpio.h>
+ #include <common.h>
+ #include <clk.h>
+ #include <dm.h>
+@@ -100,6 +101,8 @@ struct dw_spi_priv {
+ 	unsigned int mode;
+ 	unsigned long bus_clk_rate;
+ 
++	struct gpio_desc cs_gpio;	/* External chip-select gpio */
++
+ 	int bits_per_word;
+ 	u8 cs;			/* chip select pin */
+ 	u8 tmode;		/* TR/TO/RO/EEPROM */
+@@ -133,6 +136,32 @@ static inline void dw_writew(struct dw_spi_priv *priv, u32 offset, u16 val)
+ 	__raw_writew(val, priv->regs + offset);
+ }
+ 
++static int request_gpio_cs(struct udevice *bus)
++{
++#if defined(CONFIG_DM_GPIO)
++	struct dw_spi_priv *priv = dev_get_priv(bus);
++	int ret;
++
++	/* External chip select gpio line is optional */
++	ret = gpio_request_by_name(bus, "cs-gpio", 0, &priv->cs_gpio, 0);
++	if (ret == -ENOENT)
++		return 0;
++
++	if (ret < 0) {
++		printf("Can't get %s gpio! Error: %d\n", bus->name, ret);
++		return ret;
++	}
++
++	if (dm_gpio_is_valid(&priv->cs_gpio)) {
++		dm_gpio_set_dir_flags(&priv->cs_gpio,
++				      GPIOD_IS_OUT | GPIOD_IS_OUT_ACTIVE);
++	}
++
++	debug("%s: used external gpio for CS managment\n", __func__);
++#endif
++	return 0;
++}
++
+ static int dw_spi_ofdata_to_platdata(struct udevice *bus)
+ {
+ 	struct dw_spi_platdata *plat = bus->platdata;
+@@ -147,7 +176,7 @@ static int dw_spi_ofdata_to_platdata(struct udevice *bus)
+ 	debug("%s: regs=%p max-frequency=%d\n", __func__, plat->regs,
+ 	      plat->frequency);
+ 
+-	return 0;
++	return request_gpio_cs(bus);
+ }
+ 
+ static inline void spi_enable_chip(struct dw_spi_priv *priv, int enable)
+@@ -337,6 +366,18 @@ static int poll_transfer(struct dw_spi_priv *priv)
+ 	return 0;
+ }
+ 
++static void external_cs_manage(struct udevice *dev, bool on)
++{
++#if defined(CONFIG_DM_GPIO)
++	struct dw_spi_priv *priv = dev_get_priv(dev->parent);
++
++	if (!dm_gpio_is_valid(&priv->cs_gpio))
++		return;
++
++	dm_gpio_set_value(&priv->cs_gpio, on ? 1 : 0);
++#endif
++}
++
+ static int dw_spi_xfer(struct udevice *dev, unsigned int bitlen,
+ 		       const void *dout, void *din, unsigned long flags)
+ {
+@@ -355,6 +396,10 @@ static int dw_spi_xfer(struct udevice *dev, unsigned int bitlen,
+ 		return -1;
+ 	}
+ 
++	/* Start the transaction if necessary. */
++	if (flags & SPI_XFER_BEGIN)
++		external_cs_manage(dev, false);
++
+ 	cr0 = (priv->bits_per_word - 1) | (priv->type << SPI_FRF_OFFSET) |
+ 		(priv->mode << SPI_MODE_OFFSET) |
+ 		(priv->tmode << SPI_TMOD_OFFSET);
+@@ -419,6 +464,10 @@ static int dw_spi_xfer(struct udevice *dev, unsigned int bitlen,
+ 		}
+ 	}
+ 
++	/* Stop the transaction if necessary */
++	if (flags & SPI_XFER_END)
++		external_cs_manage(dev, true);
++
+ 	return ret;
+ }
+ 
+-- 
+2.11.0
+
+
+From 35f9995b1d00d314938a4fb5d38f36cb9af8bb1b Mon Sep 17 00:00:00 2001
+From: Eugeniy Paltsev <Eugeniy.Paltsev@synopsys.com>
+Date: Mon, 25 Sep 2017 21:48:40 +0300
+Subject: [PATCH 08/12] DW SPI: use 32 bit access instead of 16 and 32 bit mix
+
+Current DW SPI driver uses 32 bit access for some registers and
+16 bit access for others. So if DW SPI IP is connected via bus
+which doesn't support 16 bit access we will get bus error.
+
+Fix that by switching to 32 bit access only instead of 16 and 32 bit mix
+
+Additional Documentation to Support this Change:
+The DW_apb_ssi databook states:
+"All registers in the DW_apb_ssi are addressed at 32-bit boundaries
+to remain consistent with the AHB bus. Where the physical size of
+any register is less than 32-bits wide, the upper unused bits of
+the 32-bit boundary are reserved. Writing to these bits has no
+effect; reading from these bits returns 0." [1]
+
+[1] Section 6.1 of dw_apb_ssi.pdf (version 3.22a)
+
+Signed-off-by: Eugeniy Paltsev <Eugeniy.Paltsev@synopsys.com>
+---
+ drivers/spi/designware_spi.c | 44 +++++++++++++++++---------------------------
+ 1 file changed, 17 insertions(+), 27 deletions(-)
+
+diff --git a/drivers/spi/designware_spi.c b/drivers/spi/designware_spi.c
+index 6c1d692bb3..9d664a527f 100644
+--- a/drivers/spi/designware_spi.c
++++ b/drivers/spi/designware_spi.c
+@@ -116,26 +116,16 @@ struct dw_spi_priv {
+ 	void *rx_end;
+ };
+ 
+-static inline u32 dw_readl(struct dw_spi_priv *priv, u32 offset)
++static inline u32 dw_read(struct dw_spi_priv *priv, u32 offset)
+ {
+ 	return __raw_readl(priv->regs + offset);
+ }
+ 
+-static inline void dw_writel(struct dw_spi_priv *priv, u32 offset, u32 val)
++static inline void dw_write(struct dw_spi_priv *priv, u32 offset, u32 val)
+ {
+ 	__raw_writel(val, priv->regs + offset);
+ }
+ 
+-static inline u16 dw_readw(struct dw_spi_priv *priv, u32 offset)
+-{
+-	return __raw_readw(priv->regs + offset);
+-}
+-
+-static inline void dw_writew(struct dw_spi_priv *priv, u32 offset, u16 val)
+-{
+-	__raw_writew(val, priv->regs + offset);
+-}
+-
+ static int request_gpio_cs(struct udevice *bus)
+ {
+ #if defined(CONFIG_DM_GPIO)
+@@ -181,14 +171,14 @@ static int dw_spi_ofdata_to_platdata(struct udevice *bus)
+ 
+ static inline void spi_enable_chip(struct dw_spi_priv *priv, int enable)
+ {
+-	dw_writel(priv, DW_SPI_SSIENR, (enable ? 1 : 0));
++	dw_write(priv, DW_SPI_SSIENR, (enable ? 1 : 0));
+ }
+ 
+ /* Restart the controller, disable all interrupts, clean rx fifo */
+ static void spi_hw_init(struct dw_spi_priv *priv)
+ {
+ 	spi_enable_chip(priv, 0);
+-	dw_writel(priv, DW_SPI_IMR, 0xff);
++	dw_write(priv, DW_SPI_IMR, 0xff);
+ 	spi_enable_chip(priv, 1);
+ 
+ 	/*
+@@ -199,13 +189,13 @@ static void spi_hw_init(struct dw_spi_priv *priv)
+ 		u32 fifo;
+ 
+ 		for (fifo = 1; fifo < 256; fifo++) {
+-			dw_writew(priv, DW_SPI_TXFLTR, fifo);
+-			if (fifo != dw_readw(priv, DW_SPI_TXFLTR))
++			dw_write(priv, DW_SPI_TXFLTR, fifo);
++			if (fifo != dw_read(priv, DW_SPI_TXFLTR))
+ 				break;
+ 		}
+ 
+ 		priv->fifo_len = (fifo == 1) ? 0 : fifo;
+-		dw_writew(priv, DW_SPI_TXFLTR, 0);
++		dw_write(priv, DW_SPI_TXFLTR, 0);
+ 	}
+ 	debug("%s: fifo_len=%d\n", __func__, priv->fifo_len);
+ }
+@@ -293,7 +283,7 @@ static inline u32 tx_max(struct dw_spi_priv *priv)
+ 	u32 tx_left, tx_room, rxtx_gap;
+ 
+ 	tx_left = (priv->tx_end - priv->tx) / (priv->bits_per_word >> 3);
+-	tx_room = priv->fifo_len - dw_readw(priv, DW_SPI_TXFLR);
++	tx_room = priv->fifo_len - dw_read(priv, DW_SPI_TXFLR);
+ 
+ 	/*
+ 	 * Another concern is about the tx/rx mismatch, we
+@@ -314,7 +304,7 @@ static inline u32 rx_max(struct dw_spi_priv *priv)
+ {
+ 	u32 rx_left = (priv->rx_end - priv->rx) / (priv->bits_per_word >> 3);
+ 
+-	return min_t(u32, rx_left, dw_readw(priv, DW_SPI_RXFLR));
++	return min_t(u32, rx_left, dw_read(priv, DW_SPI_RXFLR));
+ }
+ 
+ static void dw_writer(struct dw_spi_priv *priv)
+@@ -330,7 +320,7 @@ static void dw_writer(struct dw_spi_priv *priv)
+ 			else
+ 				txw = *(u16 *)(priv->tx);
+ 		}
+-		dw_writew(priv, DW_SPI_DR, txw);
++		dw_write(priv, DW_SPI_DR, txw);
+ 		debug("%s: tx=0x%02x\n", __func__, txw);
+ 		priv->tx += priv->bits_per_word >> 3;
+ 	}
+@@ -342,7 +332,7 @@ static void dw_reader(struct dw_spi_priv *priv)
+ 	u16 rxw;
+ 
+ 	while (max--) {
+-		rxw = dw_readw(priv, DW_SPI_DR);
++		rxw = dw_read(priv, DW_SPI_DR);
+ 		debug("%s: rx=0x%02x\n", __func__, rxw);
+ 
+ 		/* Care about rx if the transfer's original "rx" is not null */
+@@ -431,8 +421,8 @@ static int dw_spi_xfer(struct udevice *dev, unsigned int bitlen,
+ 
+ 	debug("%s: cr0=%08x\n", __func__, cr0);
+ 	/* Reprogram cr0 only if changed */
+-	if (dw_readw(priv, DW_SPI_CTRL0) != cr0)
+-		dw_writew(priv, DW_SPI_CTRL0, cr0);
++	if (dw_read(priv, DW_SPI_CTRL0) != cr0)
++		dw_write(priv, DW_SPI_CTRL0, cr0);
+ 
+ 	/*
+ 	 * Configure the desired SS (slave select 0...3) in the controller
+@@ -440,7 +430,7 @@ static int dw_spi_xfer(struct udevice *dev, unsigned int bitlen,
+ 	 * automatically. So no cs_activate() etc is needed in this driver.
+ 	 */
+ 	cs = spi_chip_select(dev);
+-	dw_writel(priv, DW_SPI_SER, 1 << cs);
++	dw_write(priv, DW_SPI_SER, 1 << cs);
+ 
+ 	/* Enable controller after writing control registers */
+ 	spi_enable_chip(priv, 1);
+@@ -456,8 +446,8 @@ static int dw_spi_xfer(struct udevice *dev, unsigned int bitlen,
+ 	 * in the begining of new transfer.
+ 	 */
+ 	start = get_timer(0);
+-	while (!(dw_readl(priv, DW_SPI_SR) & SR_TF_EMPT) ||
+-		(dw_readl(priv, DW_SPI_SR) & SR_BUSY)) {
++	while (!(dw_read(priv, DW_SPI_SR) & SR_TF_EMPT) ||
++		(dw_read(priv, DW_SPI_SR) & SR_BUSY)) {
+ 		if (get_timer(start) > RX_TIMEOUT) {
+ 			ret = -ETIMEDOUT;
+ 			break;
+@@ -486,7 +476,7 @@ static int dw_spi_set_speed(struct udevice *bus, uint speed)
+ 	/* clk_div doesn't support odd number */
+ 	clk_div = priv->bus_clk_rate / speed;
+ 	clk_div = (clk_div + 1) & 0xfffe;
+-	dw_writel(priv, DW_SPI_BAUDR, clk_div);
++	dw_write(priv, DW_SPI_BAUDR, clk_div);
+ 
+ 	/* Enable controller after writing control registers */
+ 	spi_enable_chip(priv, 1);
+-- 
+2.11.0
+
+
+From 69a8fff48be90b336e275554535b237439439eb0 Mon Sep 17 00:00:00 2001
+From: Eugeniy Paltsev <Eugeniy.Paltsev@synopsys.com>
+Date: Mon, 9 Oct 2017 19:25:51 +0300
+Subject: [PATCH 09/12] SPI Flash: add support of sst26wf* flash series
+
+sst26wf flash series block protection implementation differs
+from other SST series, so add implementation for sst26wf
+lock/unlock/is_locked functions.
+
+Signed-off-by: Eugeniy Paltsev <Eugeniy.Paltsev@synopsys.com>
+---
+ drivers/mtd/spi/spi_flash.c | 188 ++++++++++++++++++++++++++++++++++++++++++++
+ 1 file changed, 188 insertions(+)
+
+diff --git a/drivers/mtd/spi/spi_flash.c b/drivers/mtd/spi/spi_flash.c
+index 51e28bf07b..163471d143 100644
+--- a/drivers/mtd/spi/spi_flash.c
++++ b/drivers/mtd/spi/spi_flash.c
+@@ -839,6 +839,184 @@ int stm_unlock(struct spi_flash *flash, u32 ofs, size_t len)
+ }
+ #endif
+ 
++#if defined(CONFIG_SPI_FLASH_SST)
++#define SST26_CMD_READ_BPR		0x72
++#define SST26_CMD_WRITE_BPR		0x42
++
++#define BLOCK_64K_SZ			0x10000
++#define MAX_BPR_REG_LEN			(18 + 1)
++#define SST26WF_BOUND_REG_SIZE		((32 + 4 * 8) * 1024)
++
++bool sst26_check_bpr(u32 bpr_size, u8 *cmd, u32 bit)
++{
++	return !!(cmd[bpr_size - (bit / 8) - 1] & BIT(bit % 8));
++}
++
++bool sst26_clear_bpr(u32 bpr_size, u8 *cmd, u32 bit)
++{
++	cmd[bpr_size - (bit / 8) - 1] &= ~BIT(bit % 8);
++	return false;
++}
++
++bool sst26_set_bpr(u32 bpr_size, u8 *cmd, u32 bit)
++{
++	cmd[bpr_size - (bit / 8) - 1] |= BIT(bit % 8);
++	return false;
++}
++
++enum lock_ctl {
++	CTL_LOCK,
++	CTL_UNLOCK,
++	CTL_CHECK
++};
++
++/*
++ * sst26wf016/sst26wf032/sst26wf064 have next block protection:
++ * 4x   - 8  KByte blocks - read & write protection bits - upper addresses
++ * 1x   - 32 KByte blocks - write protection bits
++ * rest - 64 KByte blocks - write protection bits
++ * 1x   - 32 KByte blocks - write protection bits
++ * 4x   - 8  KByte blocks - read & write protection bits - lower addresses
++ *
++ * We'll support only per 64k lock/unlock so lower and upper 64 KByte region
++ * will be treated as single block.
++ */
++
++/*
++ * Lock, unlock or check lock status of the flash region of the flash (depending
++ * on the lock_ctl value)
++ */
++int sst26_lock_ctl(struct spi_flash *flash, u32 ofs, size_t len, enum lock_ctl ctl)
++{
++	u32 i, bpr_ptr, rptr_64k, lptr_64k, bpr_size;
++	bool lower_64k = false, upper_64k = false;
++	u8 cmd, bpr_buff[MAX_BPR_REG_LEN] = {};
++	int ret;
++
++	bool (* bpr_bit_process) (u32 bpr_size, u8 *, u32);
++
++	/* Check length and offset for 64k alignment */
++	if ((ofs & 0xFFFF) || (len & 0xFFFF))
++		return -EINVAL;
++
++	if (ofs + len > flash->size)
++		return -EINVAL;
++
++	/* SST26 family has only 16 Mbit, 32 Mbit and 64 Mbit IC */
++	if (flash->size != 0x200000 &&
++	    flash->size != 0x400000 &&
++	    flash->size != 0x800000)
++		return -EINVAL;
++
++	bpr_size = 2 + (flash->size / BLOCK_64K_SZ / 8);
++
++	cmd = SST26_CMD_READ_BPR;
++	ret = spi_flash_read_common(flash, &cmd, 1, bpr_buff, bpr_size);
++	if (ret < 0) {
++		printf("SF: fail to read block-protection register\n");
++		return ret;
++	}
++
++	if (ctl == CTL_LOCK)
++		bpr_bit_process = sst26_set_bpr;
++	else if (ctl == CTL_UNLOCK)
++		bpr_bit_process = sst26_clear_bpr;
++	else
++		bpr_bit_process = sst26_check_bpr;
++
++	rptr_64k = min_t(u32, ofs + len , flash->size - SST26WF_BOUND_REG_SIZE);
++	lptr_64k = max_t(u32, ofs, SST26WF_BOUND_REG_SIZE);
++
++	upper_64k = ((ofs + len) > (flash->size - SST26WF_BOUND_REG_SIZE));
++	lower_64k = (ofs < SST26WF_BOUND_REG_SIZE);
++
++	/* Lower bits in block-protection register are about 64k region */
++	bpr_ptr = lptr_64k / BLOCK_64K_SZ - 1;
++
++	/* Process 64K blocks region */
++	while (lptr_64k < rptr_64k) {
++		if (bpr_bit_process(bpr_size, bpr_buff, bpr_ptr))
++			return 1;
++
++		bpr_ptr++;
++		lptr_64k += BLOCK_64K_SZ;
++	}
++
++	/* 32K and 8K region bits in BPR are after 64k region bits */
++	bpr_ptr = (flash->size - 2 * SST26WF_BOUND_REG_SIZE) / BLOCK_64K_SZ;
++
++	/* Process lower 32K block region */
++	if (lower_64k)
++		if (bpr_bit_process(bpr_size, bpr_buff, bpr_ptr))
++			return 1;
++
++	bpr_ptr++;
++
++	/* Process upper 32K block region */
++	if (upper_64k)
++		if (bpr_bit_process(bpr_size, bpr_buff, bpr_ptr))
++			return 1;
++
++	bpr_ptr++;
++
++	/* Process lower 8K block region */
++	for (i = 0; i < 4; i++) {
++		if (lower_64k)
++			if (bpr_bit_process(bpr_size, bpr_buff, bpr_ptr))
++				return 1;
++
++		/* In 8K area BPR has both read and write protection bits */
++		bpr_ptr += 2;
++	}
++
++	/* Process upper 8K block region */
++	for (i = 0; i < 4; i++) {
++		if (upper_64k)
++			if (bpr_bit_process(bpr_size, bpr_buff, bpr_ptr))
++				return 1;
++
++		/* In 8K area BPR has both read and write protection bits */
++		bpr_ptr += 2;
++	}
++
++	/* If we check region status we don't need to write BPR back */
++	if (ctl == CTL_CHECK)
++		return 0;
++
++	cmd = SST26_CMD_WRITE_BPR;
++	ret = spi_flash_write_common(flash, &cmd, 1, bpr_buff, bpr_size);
++	if (ret < 0) {
++		printf("SF: fail to write block-protection register\n");
++		return ret;
++	}
++
++	return 0;
++}
++
++int sst26_unlock(struct spi_flash *flash, u32 ofs, size_t len)
++{
++	return sst26_lock_ctl(flash, ofs, len, CTL_UNLOCK);
++}
++
++int sst26_lock(struct spi_flash *flash, u32 ofs, size_t len)
++{
++	return sst26_lock_ctl(flash, ofs, len, CTL_LOCK);
++}
++
++int sst26_is_locked(struct spi_flash *flash, u32 ofs, size_t len)
++{
++	/*
++	 * is_locked function is used for check before reading or erasing flash
++	 * region, so offset and length might be not 64k allighned, so adjust
++	 * them to be 64k allighned as sst26_lock_ctl works only with 64k
++	 * allighned regions.
++	 */
++	ofs -= ofs & 0xFFFF;
++	len = len & 0xFFFF ? (len & ~0xFFFF) + BLOCK_64K_SZ : len;
++
++	return sst26_lock_ctl(flash, ofs, len, CTL_CHECK);
++}
++#endif
+ 
+ #ifdef CONFIG_SPI_FLASH_MACRONIX
+ static int macronix_quad_enable(struct spi_flash *flash)
+@@ -1030,6 +1208,16 @@ int spi_flash_scan(struct spi_flash *flash)
+ 	}
+ #endif
+ 
++/* sst26wf series block protection implementation differs from other series */
++#if defined(CONFIG_SPI_FLASH_SST)
++	if (JEDEC_MFR(info) == SPI_FLASH_CFI_MFR_SST &&
++	    (JEDEC_ID(info) >> 8) == 0x26) {
++		flash->flash_lock = sst26_lock;
++		flash->flash_unlock = sst26_unlock;
++		flash->flash_is_locked = sst26_is_locked;
++	}
++#endif
++
+ 	/* Compute the flash size */
+ 	flash->shift = (flash->dual_flash & SF_DUAL_PARALLEL_FLASH) ? 1 : 0;
+ 	flash->page_size = info->page_size;
+-- 
+2.11.0
+
+
+From 5cf85276a6ab0075d9868117c6169ad3f87aabca Mon Sep 17 00:00:00 2001
+From: Eugeniy Paltsev <Eugeniy.Paltsev@synopsys.com>
+Date: Mon, 9 Oct 2017 20:05:18 +0300
+Subject: [PATCH 10/12] SF: add add support for sst26wf016, sst26wf032,
+ sst26wf064
+
+This commit adds support for the SST sst26wf016, sst26wf032
+and sst26wf064 flash IC.
+
+Signed-off-by: Eugeniy Paltsev <Eugeniy.Paltsev@synopsys.com>
+---
+ drivers/mtd/spi/spi_flash_ids.c | 3 +++
+ 1 file changed, 3 insertions(+)
+
+diff --git a/drivers/mtd/spi/spi_flash_ids.c b/drivers/mtd/spi/spi_flash_ids.c
+index 13f64e773f..e18bc50dcf 100644
+--- a/drivers/mtd/spi/spi_flash_ids.c
++++ b/drivers/mtd/spi/spi_flash_ids.c
+@@ -149,6 +149,9 @@ const struct spi_flash_info spi_flash_ids[] = {
+ 	{"sst25wf040",	   INFO(0xbf2504, 0x0,	64 * 1024,     8, SECT_4K | SST_WR) },
+ 	{"sst25wf040b",	   INFO(0x621613, 0x0,	64 * 1024,     8, SECT_4K) },
+ 	{"sst25wf080",	   INFO(0xbf2505, 0x0,	64 * 1024,    16, SECT_4K | SST_WR) },
++	{"sst26wf016",	   INFO(0xbf2651, 0x0,	64 * 1024,    32, SECT_4K) },
++	{"sst26wf032",	   INFO(0xbf2622, 0x0,	64 * 1024,    64, SECT_4K) },
++	{"sst26wf064",	   INFO(0xbf2643, 0x0,	64 * 1024,   128, SECT_4K) },
+ #endif
+ #ifdef CONFIG_SPI_FLASH_WINBOND		/* WINBOND */
+ 	{"w25p80",	   INFO(0xef2014, 0x0,	64 * 1024,    16, 0) },
+-- 
+2.11.0
+
+
+From f2ff40f7d1a032437e5ed1ed9ea133391185af23 Mon Sep 17 00:00:00 2001
+From: Eugeniy Paltsev <Eugeniy.Paltsev@synopsys.com>
+Date: Mon, 16 Oct 2017 15:07:46 +0300
+Subject: [PATCH 11/12] ARC: add asm/gpio.h to fix compilation error with
+ CONFIG_CMD_GPIO
+
+With CONFIG_CMD_GPIO compilation reports error.
+common/cmd_gpio.c:13:22: fatal error: asm/gpio.h: No such file or directory
+ #include <asm/gpio.h>
+                      ^
+
+Signed-off-by: Eugeniy Paltsev <Eugeniy.Paltsev@synopsys.com>
+---
+ arch/arc/include/asm/gpio.h | 1 +
+ 1 file changed, 1 insertion(+)
+ create mode 100644 arch/arc/include/asm/gpio.h
+
+diff --git a/arch/arc/include/asm/gpio.h b/arch/arc/include/asm/gpio.h
+new file mode 100644
+index 0000000000..306ab4c9f2
+--- /dev/null
++++ b/arch/arc/include/asm/gpio.h
+@@ -0,0 +1 @@
++#include <asm-generic/gpio.h>
+-- 
+2.11.0
+
+
+From b8c2464e67fcbb4c837ee4eb332081e397bf5ec8 Mon Sep 17 00:00:00 2001
+From: Eugeniy Paltsev <Eugeniy.Paltsev@synopsys.com>
+Date: Wed, 1 Nov 2017 21:11:00 +0300
+Subject: [PATCH 12/12] ARC: HSDK: update dts and defconfig for SPI flash usage
+
+Add nodes of DW SPI controller, SPI flash IC and SPI CS GPIO.
+Enable SPI subsystem in defconfig.
+
+Signed-off-by: Eugeniy Paltsev <Eugeniy.Paltsev@synopsys.com>
+---
+ arch/arc/dts/hsdk.dts  | 36 ++++++++++++++++++++++++++++++++++++
+ configs/hsdk_defconfig |  9 +++++++++
+ 2 files changed, 45 insertions(+)
+
+diff --git a/arch/arc/dts/hsdk.dts b/arch/arc/dts/hsdk.dts
+index a7b276c01e..43fd3b9884 100644
+--- a/arch/arc/dts/hsdk.dts
++++ b/arch/arc/dts/hsdk.dts
+@@ -13,6 +13,7 @@
+ 
+ 	aliases {
+ 		console = &uart0;
++		spi0 = "/spi@f0020000";
+ 	};
+ 
+ 	cpu_card {
+@@ -24,6 +25,13 @@
+ 		};
+ 	};
+ 
++	periph_clk: periph_clk {
++		#clock-cells = <0>;
++		compatible = "fixed-clock";
++		clock-frequency = <33330000>;
++		u-boot,dm-pre-reloc;
++	};
++
+ 	uart0: serial0@f0005000 {
+ 		compatible = "snps,dw-apb-uart";
+ 		reg = <0xf0005000 0x1000>;
+@@ -47,4 +55,32 @@
+ 		compatible = "generic-ohci";
+ 		reg = <0xf0060000 0x100>;
+ 	};
++
++	spi@f0020000 {
++		u-boot,dm-pre-reloc;
++		compatible = "snps,dw-apb-ssi";
++		reg = <0xf0020000 0x1000>;
++		#address-cells = <1>;
++		#size-cells = <0>;
++		spi-max-frequency = <4000000>;
++		clocks = <&periph_clk>;
++		clock-names = "spi_clk";
++		cs-gpio = <&cs_gpio 0>;
++		spi_flash@0 {
++			u-boot,dm-pre-reloc;
++			compatible = "spi-flash";
++			reg = <0>;
++			spi-max-frequency = <4000000>;
++		};
++	};
++
++	cs_gpio: gpio@f00114B0 {
++		u-boot,dm-pre-reloc;
++		compatible = "snps,hsdk-creg-gpio";
++		reg = <0xf00014B0 0x4>;
++		gpio-controller;
++		#gpio-cells = <1>;
++		gpio-bank-name = "hsdk-spi-cs";
++		gpio-count = <1>;
++	};
+ };
+diff --git a/configs/hsdk_defconfig b/configs/hsdk_defconfig
+index a04cfee5f0..c2cea0a2c3 100644
+--- a/configs/hsdk_defconfig
++++ b/configs/hsdk_defconfig
+@@ -10,6 +10,8 @@ CONFIG_BOARD_EARLY_INIT_F=y
+ CONFIG_SYS_PROMPT="hsdk# "
+ # CONFIG_CMD_FLASH is not set
+ CONFIG_CMD_MMC=y
++CONFIG_CMD_SF=y
++CONFIG_CMD_SPI=y
+ CONFIG_CMD_USB=y
+ # CONFIG_CMD_SETEXPR is not set
+ CONFIG_CMD_DHCP=y
+@@ -25,12 +27,19 @@ CONFIG_ENV_FAT_INTERFACE="mmc"
+ CONFIG_ENV_FAT_DEVICE_AND_PART="0:1"
+ CONFIG_NET_RANDOM_ETHADDR=y
+ CONFIG_DM=y
++CONFIG_DM_GPIO=y
++CONFIG_HSDK_CREG_GPIO=y
+ CONFIG_MMC=y
+ CONFIG_MMC_DW=y
++CONFIG_DM_SPI_FLASH=y
++CONFIG_SPI_FLASH=y
++CONFIG_SPI_FLASH_SST=y
+ CONFIG_DM_ETH=y
+ CONFIG_ETH_DESIGNWARE=y
+ CONFIG_DM_SERIAL=y
+ CONFIG_SYS_NS16550=y
++CONFIG_DM_SPI=y
++CONFIG_DESIGNWARE_SPI=y
+ CONFIG_USB=y
+ CONFIG_DM_USB=y
+ CONFIG_USB_EHCI_HCD=y
+-- 
+2.11.0
+
