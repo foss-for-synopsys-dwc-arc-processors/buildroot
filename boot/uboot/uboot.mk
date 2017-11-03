@@ -40,6 +40,13 @@ ifeq ($(BR2_TARGET_UBOOT_FORMAT_BIN),y)
 UBOOT_BINS += u-boot.bin
 endif
 
+#Building u-boot files for hsdk requires host-python3
+ifeq ($(BR2_arc),y)
+ifeq ($(BR2_TARGET_UBOOT_BOARD_DEFCONFIG),"hsdk")
+UBOOT_DEPENDENCIES += host-python3
+endif
+endif
+
 ifeq ($(BR2_TARGET_UBOOT_FORMAT_ELF),y)
 UBOOT_BINS += u-boot
 # To make elf usable for debuging on ARC use special target
