@@ -1,0 +1,53 @@
+From 8ae4784638590243ab26323328e83779d12b697b Mon Sep 17 00:00:00 2001
+From: Eugeniy Paltsev <Eugeniy.Paltsev@synopsys.com>
+Date: Thu, 9 Nov 2017 17:58:51 +0300
+Subject: [PATCH 03/46] HSDK: DTS: add pll nodes and fmeas dummy node
+
+Signed-off-by: Eugeniy Paltsev <Eugeniy.Paltsev@synopsys.com>
+---
+ arch/arc/dts/hsdk.dts | 29 +++++++++++++++++++++++++++++
+ 1 file changed, 29 insertions(+)
+
+diff --git a/arch/arc/dts/hsdk.dts b/arch/arc/dts/hsdk.dts
+index a7b276c01e..9a2090f3ea 100644
+--- a/arch/arc/dts/hsdk.dts
++++ b/arch/arc/dts/hsdk.dts
+@@ -24,6 +24,35 @@
+ 		};
+ 	};
+ 
++	clk-fmeas {
++		clocks = <&cpu_clk>, <&sys_clk>, <&tun_clk>, <&ddr_clk>;
++		clock-names = "cpu-clk", "sys-clk", "tun-clk", "ddr-clk";
++	};
++
++	cpu_clk: cpu-clk@f0000000 {
++		compatible = "snps,hsdk-core-pll-clock";
++		reg = <0xf0000000 0x10>, <0xf00014B8 0x4>;
++		#clock-cells = <0>;
++	};
++
++	sys_clk: sys-clk@f0000010 {
++		compatible = "snps,hsdk-gp-pll-clock";
++		reg = <0xf0000010 0x10>;
++		#clock-cells = <0>;
++	};
++
++	ddr_clk: ddr-clk@f0000020 {
++		compatible = "snps,hsdk-gp-pll-clock";
++		reg = <0xf0000020 0x10>;
++		#clock-cells = <0>;
++	};
++
++	tun_clk: tun-clk@f0000030 {
++		compatible = "snps,hsdk-gp-pll-clock";
++		reg = <0xf0000030 0x10>;
++		#clock-cells = <0>;
++	};
++
+ 	uart0: serial0@f0005000 {
+ 		compatible = "snps,dw-apb-uart";
+ 		reg = <0xf0005000 0x1000>;
+-- 
+2.11.0
+

@@ -1,0 +1,182 @@
+From c8584119d03e82c575b360f6c7dc7a94b56f7c49 Mon Sep 17 00:00:00 2001
+From: Eugeniy Paltsev <Eugeniy.Paltsev@synopsys.com>
+Date: Fri, 13 Oct 2017 15:38:31 +0300
+Subject: [PATCH 34/46] ARC: HSDK: introduce CREG GPIO driver
+
+The HSDK can manage some pins via CREG registers block.
+
+Signed-off-by: Eugeniy Paltsev <Eugeniy.Paltsev@synopsys.com>
+---
+ MAINTAINERS                   |   6 +++
+ drivers/gpio/Kconfig          |   7 +++
+ drivers/gpio/Makefile         |   1 +
+ drivers/gpio/hsdk-creg-gpio.c | 110 ++++++++++++++++++++++++++++++++++++++++++
+ 4 files changed, 124 insertions(+)
+ create mode 100644 drivers/gpio/hsdk-creg-gpio.c
+
+diff --git a/MAINTAINERS b/MAINTAINERS
+index 077a40b447..41d9116c3d 100644
+--- a/MAINTAINERS
++++ b/MAINTAINERS
+@@ -65,6 +65,12 @@ S:	Maintained
+ L:	uboot-snps-arc@synopsys.com
+ F:	drivers/clk/clk-hsdk-cgu.c
+ 
++ARC HSDK CREG GPIO
++M:	Eugeniy Paltsev <Eugeniy.Paltsev@synopsys.com>
++S:	Maintained
++L:	uboot-snps-arc@synopsys.com
++F:	drivers/gpio/hsdk-creg-gpio.c
++
+ ARM
+ M:	Albert Aribaud <albert.u.boot@aribaud.net>
+ S:	Maintained
+diff --git a/drivers/gpio/Kconfig b/drivers/gpio/Kconfig
+index 6240c39539..2acb33bb51 100644
+--- a/drivers/gpio/Kconfig
++++ b/drivers/gpio/Kconfig
+@@ -80,6 +80,13 @@ config IMX_RGPIO2P
+ 	help
+ 	  This driver supports i.MX7ULP Rapid GPIO2P controller.
+ 
++config HSDK_CREG_GPIO
++	bool "HSDK CREG GPIO griver"
++	depends on DM
++	default n
++	help
++	  This driver supports CREG GPIOs on Synopsys HSDK SOC.
++
+ config LPC32XX_GPIO
+ 	bool "LPC32XX GPIO driver"
+ 	depends on DM
+diff --git a/drivers/gpio/Makefile b/drivers/gpio/Makefile
+index 81f55a576b..201d7bfff9 100644
+--- a/drivers/gpio/Makefile
++++ b/drivers/gpio/Makefile
+@@ -54,6 +54,7 @@ obj-$(CONFIG_GPIO_UNIPHIER)	+= gpio-uniphier.o
+ obj-$(CONFIG_ZYNQ_GPIO)		+= zynq_gpio.o
+ obj-$(CONFIG_VYBRID_GPIO)	+= vybrid_gpio.o
+ obj-$(CONFIG_HIKEY_GPIO)	+= hi6220_gpio.o
++obj-$(CONFIG_HSDK_CREG_GPIO)	+= hsdk-creg-gpio.o
+ obj-$(CONFIG_IMX_RGPIO2P)	+= imx_rgpio2p.o
+ obj-$(CONFIG_PIC32_GPIO)	+= pic32_gpio.o
+ obj-$(CONFIG_MVEBU_GPIO)	+= mvebu_gpio.o
+diff --git a/drivers/gpio/hsdk-creg-gpio.c b/drivers/gpio/hsdk-creg-gpio.c
+new file mode 100644
+index 0000000000..8ca807a18f
+--- /dev/null
++++ b/drivers/gpio/hsdk-creg-gpio.c
+@@ -0,0 +1,110 @@
++/*
++ * Synopsys HSDK SDP Generic PLL clock driver
++ *
++ * Copyright (C) 2017 Synopsys
++ * Author: Eugeniy Paltsev <Eugeniy.Paltsev@synopsys.com>
++ *
++ * This file is licensed under the terms of the GNU General Public
++ * License version 2. This program is licensed "as is" without any
++ * warranty of any kind, whether express or implied.
++ */
++
++#include <asm-generic/gpio.h>
++#include <asm/io.h>
++#include <common.h>
++#include <dm.h>
++#include <errno.h>
++#include <linux/printk.h>
++
++DECLARE_GLOBAL_DATA_PTR;
++
++#define HSDK_CREG_MAX_GPIO	8
++
++#define GPIO_ACTIVATE		0x2
++#define GPIO_DEACTIVATE		0x3
++#define GPIO_PIN_MASK		0x3
++#define BIT_PER_GPIO		2
++
++struct hsdk_creg_gpio {
++	uint32_t *regs;
++};
++
++static int hsdk_creg_gpio_set_value(struct udevice *dev, unsigned oft, int val)
++{
++	struct hsdk_creg_gpio *hcg = dev_get_priv(dev);
++	uint32_t reg = readl(hcg->regs);
++	uint32_t cmd = val ? GPIO_DEACTIVATE : GPIO_ACTIVATE;
++
++	reg &= ~(GPIO_PIN_MASK << (oft * BIT_PER_GPIO));
++	reg |=  (cmd << (oft * BIT_PER_GPIO));
++
++	writel(reg, hcg->regs);
++
++	return 0;
++}
++
++static int hsdk_creg_gpio_direction_output(struct udevice *dev, unsigned oft,
++					   int val)
++{
++	hsdk_creg_gpio_set_value(dev, oft, val);
++
++	return 0;
++}
++
++static int hsdk_creg_gpio_direction_input(struct udevice *dev, unsigned oft)
++{
++	pr_err("hsdk-creg-gpio can't be used as input!\n");
++
++	return -ENOTSUPP;
++}
++
++static int hsdk_creg_gpio_get_value(struct udevice *dev, unsigned int oft)
++{
++	struct hsdk_creg_gpio *hcg = dev_get_priv(dev);
++	uint32_t val = readl(hcg->regs);
++
++	val = (val >> (oft * BIT_PER_GPIO)) & GPIO_PIN_MASK;
++	return (val == GPIO_DEACTIVATE) ? 1 : 0;
++}
++
++static const struct dm_gpio_ops hsdk_creg_gpio_ops = {
++	.direction_output	= hsdk_creg_gpio_direction_output,
++	.direction_input	= hsdk_creg_gpio_direction_input,
++	.set_value		= hsdk_creg_gpio_set_value,
++	.get_value		= hsdk_creg_gpio_get_value,
++};
++
++static int hsdk_creg_gpio_probe(struct udevice *dev)
++{
++	struct gpio_dev_priv *uc_priv = dev_get_uclass_priv(dev);
++	struct hsdk_creg_gpio *hcg = dev_get_priv(dev);
++
++	hcg->regs = (uint32_t *)devfdt_get_addr_ptr(dev);
++
++	uc_priv->gpio_count = dev_read_u32_default(dev, "gpio-count", 1);
++	if (uc_priv->gpio_count > HSDK_CREG_MAX_GPIO)
++		uc_priv->gpio_count = HSDK_CREG_MAX_GPIO;
++
++	uc_priv->bank_name = dev_read_string(dev, "gpio-bank-name");
++	if (!uc_priv->bank_name)
++		uc_priv->bank_name = dev_read_name(dev);
++
++	pr_debug("%s GPIO [0x%p] controller with %d gpios probed\n",
++		 uc_priv->bank_name, hcg->regs, uc_priv->gpio_count);
++
++	return 0;
++}
++
++static const struct udevice_id hsdk_creg_gpio_ids[] = {
++	{ .compatible = "snps,hsdk-creg-gpio" },
++	{ }
++};
++
++U_BOOT_DRIVER(gpio_hsdk_creg) = {
++	.name	= "gpio_hsdk_creg",
++	.id	= UCLASS_GPIO,
++	.ops	= &hsdk_creg_gpio_ops,
++	.probe	= hsdk_creg_gpio_probe,
++	.of_match = hsdk_creg_gpio_ids,
++	.platdata_auto_alloc_size = sizeof(struct hsdk_creg_gpio),
++};
+-- 
+2.11.0
+

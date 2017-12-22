@@ -1,0 +1,44 @@
+From 52dadcf3f623975a8de5a00ab9404102550872bd Mon Sep 17 00:00:00 2001
+From: Eugeniy Paltsev <Eugeniy.Paltsev@synopsys.com>
+Date: Fri, 22 Dec 2017 19:38:51 +0300
+Subject: [PATCH 2/2] ARC: HSDK: fixies in CL arg parser
+
+Signed-off-by: Eugeniy Paltsev <Eugeniy.Paltsev@synopsys.com>
+---
+ board/synopsys/hsdk/hsdk-cmd.c | 6 +++++-
+ 1 file changed, 5 insertions(+), 1 deletion(-)
+
+diff --git a/board/synopsys/hsdk/hsdk-cmd.c b/board/synopsys/hsdk/hsdk-cmd.c
+index c2d5ab0afa..5d8f456a80 100644
+--- a/board/synopsys/hsdk/hsdk-cmd.c
++++ b/board/synopsys/hsdk/hsdk-cmd.c
+@@ -208,7 +208,7 @@ static int env_read_common(u32 index, const struct hsdk_env_map_common *map)
+ 	return 0;
+ }
+ 
+-static int env_clear_core(u32 index, const struct hsdk_env_map_core *map)
++static void env_clear_core(u32 index, const struct hsdk_env_map_core *map)
+ {
+ 	u32 i;
+ 
+@@ -1093,6 +1093,8 @@ static int hsdk_read_args_search(const struct hsdk_env_map_common *map, int argc
+ 			return i;
+ 	}
+ 
++	pr_err("Unexpected argument '%s', can't parse\n", argv[0]);
++
+ 	return -ENOENT;
+ }
+ 
+@@ -1128,6 +1130,8 @@ static int hsdk_args_enumerate(const struct hsdk_env_map_common *map, int enum_b
+ 
+ 	while (argc > 0) {
+ 		i = hsdk_read_args_search(map, argc, argv);
++		if (i < 0)
++			return i;
+ 
+ //		printf("PAL: %s: found '%s' with index %d\n", __func__, map[i].env_name, i);
+ 
+-- 
+2.11.0
+

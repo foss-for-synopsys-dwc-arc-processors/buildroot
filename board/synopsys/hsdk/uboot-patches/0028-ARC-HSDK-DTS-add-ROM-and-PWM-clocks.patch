@@ -1,0 +1,35 @@
+From 38a1234b3718837ec63cce8a4f2d057779407dd3 Mon Sep 17 00:00:00 2001
+From: Eugeniy Paltsev <Eugeniy.Paltsev@synopsys.com>
+Date: Fri, 22 Dec 2017 13:43:41 +0300
+Subject: [PATCH 28/46] ARC: HSDK: DTS: add ROM and PWM clocks
+
+Signed-off-by: Eugeniy Paltsev <Eugeniy.Paltsev@synopsys.com>
+---
+ arch/arc/dts/hsdk.dts | 6 ++++--
+ 1 file changed, 4 insertions(+), 2 deletions(-)
+
+diff --git a/arch/arc/dts/hsdk.dts b/arch/arc/dts/hsdk.dts
+index 0527e1341b..aaaf2a2a3d 100644
+--- a/arch/arc/dts/hsdk.dts
++++ b/arch/arc/dts/hsdk.dts
+@@ -30,13 +30,15 @@
+ 			 <&cgu_clk 4>, <&cgu_clk 5>, <&cgu_clk 6>, <&cgu_clk 7>,
+ 			 <&cgu_clk 8>, <&cgu_clk 9>, <&cgu_clk 10>, <&cgu_clk 11>,
+ 			 <&cgu_clk 12>, <&cgu_clk 13>, <&cgu_clk 14>, <&cgu_clk 15>,
+-			 <&cgu_clk 16>, <&cgu_clk 17>, <&cgu_clk 18>, <&cgu_clk 19>;
++			 <&cgu_clk 16>, <&cgu_clk 17>, <&cgu_clk 18>, <&cgu_clk 19>,
++			 <&cgu_clk 24>, <&cgu_clk 25>;
+ 		clock-names = "cpu-pll", "sys-pll", "tun-pll", "ddr-clk",
+ 			      "cpu-clk", "hdmi-pll", "tun-clk", "hdmi-clk",
+ 			      "sys-apb", "sys-axi", "sys-eth", "sys-usb",
+ 			      "sys-sdio", "sys-hdmi", "sys-gfx-core", "sys-gfx-dma",
+ 			      "sys-gfx-cfg", "sys-dmac-core", "sys-dmac-cfg", "sys-sdio-ref",
+-			      "sys-spi", "sys-i2c", "sys-uart", "sys-ebi";
++			      "sys-spi", "sys-i2c", "sys-uart", "sys-ebi",
++			      "rom-clk", "pwm-clk";
+ 	};
+ 
+ 	cgu_clk: cgu-clk@f0000000 {
+-- 
+2.11.0
+

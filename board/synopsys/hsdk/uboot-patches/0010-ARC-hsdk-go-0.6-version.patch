@@ -1,0 +1,379 @@
+From 8a351af70a00186a7533158fc954d431be83d6ba Mon Sep 17 00:00:00 2001
+From: Eugeniy Paltsev <Eugeniy.Paltsev@synopsys.com>
+Date: Mon, 27 Nov 2017 20:40:00 +0300
+Subject: [PATCH 10/46] ARC: hsdk-go: 0.6 version
+
+The new u-boot with significant changes is ready.
+  * All aliases like 'hsdk_hs38x3' and default variables now are available even without
+    uboot.env (for example when there is no SD card connected)
+  * We are able to set all required frequencies (CPU, AXI, TUNNEL).
+  * Memory map programming was added.
+  * A lot of small limitations were fixed.
+
+Signed-off-by: Eugeniy Paltsev <Eugeniy.Paltsev@synopsys.com>
+---
+ board/synopsys/hsdk/hsdk-cmd.c | 277 +++++++++++++++++++++++++++++++++++++----
+ 1 file changed, 255 insertions(+), 22 deletions(-)
+
+diff --git a/board/synopsys/hsdk/hsdk-cmd.c b/board/synopsys/hsdk/hsdk-cmd.c
+index 776865fecd..523af6ec69 100644
+--- a/board/synopsys/hsdk/hsdk-cmd.c
++++ b/board/synopsys/hsdk/hsdk-cmd.c
+@@ -13,7 +13,9 @@
+ 	#error "hsdk_go will not work with BIG endian CPU"
+ #endif
+ 
+-#define HSDKGO_VERSION	"0.5"
++#define HSDKGO_VERSION	"0.6"
++
++#define HZ_IN_MHZ	1000000
+ 
+ #define ceil(x, y) ({ ulong __x = (x), __y = (y); (__x + __y - 1) / __y; })
+ 
+@@ -65,7 +67,7 @@ struct hsdk_env_map_core {
+ };
+ 
+ /* Place for slave cpu temporary stack */
+-static u32 slave_stack[1024] __attribute__((aligned(4)));
++static u32 slave_stack[256 * NR_CPUS] __attribute__((aligned(4)));
+ 
+ static struct hsdk_env_common_ctl env_common = {};
+ static struct hsdk_env_core_ctl env_core = {};
+@@ -82,8 +84,10 @@ int soc_clk_ctl(const char *name, ulong *rate, bool set)
+ 	};
+ 
+ 	ret = clk_get_by_name(&fmeas, name, &clk);
+-	if (ret)
++	if (ret) {
++		pr_err("clock '%s' not found, err=%d\n", name, ret);
+ 		return ret;
++	}
+ 
+ 	ret = clk_enable(&clk);
+ 	if (ret && ret != -ENOSYS)
+@@ -99,7 +103,7 @@ int soc_clk_ctl(const char *name, ulong *rate, bool set)
+ 
+ 	clk_free(&clk);
+ 
+-	printf("HSDK: clock '%s' rate %lu MHz\n", name, ceil(*rate, 1000000));
++	debug("HSDK: clock '%s' rate %lu MHz\n", name, ceil(*rate, HZ_IN_MHZ));
+ 
+ 	return 0;
+ }
+@@ -114,14 +118,14 @@ static const struct hsdk_env_map_common env_map_common[] = {
+ 	{ "cpu_freq",		false,	100, 1000,	&env_common.cpu_freq },
+ 	{ "axi_freq",		false,	200, 800,	&env_common.axi_freq },
+ 	{ "tun_freq",		false,	0, 150,		&env_common.tun_freq },
+-	{ "non_volatile_limit", true,	0x1, 0xF, 	&env_common.nvlim },
++	{ "non_volatile_limit", true,	0, 0xF, 	&env_common.nvlim },
+ 	{ "icache_ena",		true,	0, 1,		&env_common.icache },
+ 	{ "dcache_ena",		true,	0, 1,		&env_common.dcache },
+ 	{}
+ };
+ 
+ static const struct hsdk_env_map_core env_map_core[] = {
+-	{ "core_entry",		true,	{0, 0, 0, 0}, {U32_MAX, U32_MAX, U32_MAX, U32_MAX},	&env_core.entry },
++	{ "core_entry",	true,	{0, 0, 0, 0}, {U32_MAX, U32_MAX, U32_MAX, U32_MAX},	&env_core.entry },
+ 	{ "core_iccm",	true,	{NO_CCM, 0, NO_CCM, 0}, {NO_CCM, 0xF, NO_CCM, 0xF},	&env_core.iccm },
+ 	{ "core_dccm",	true,	{NO_CCM, 0, NO_CCM, 0}, {NO_CCM, 0xF, NO_CCM, 0xF},	&env_core.dccm },
+ 	{}
+@@ -405,8 +409,6 @@ static inline u32 get_this_cpu_id(void)
+ }
+ 
+ #define	CREG_BASE	(ARC_PERIPHERAL_BASE + 0x1000)
+-#define	CREG_PAE	(CREG_BASE + 0x180)
+-#define	CREG_PAE_UPDATE	(CREG_BASE + 0x194)
+ #define	CREG_CPU_START	(CREG_BASE + 0x400)
+ #define	CPU_START_MASK	0xF
+ 
+@@ -498,8 +500,8 @@ static void do_init_slave_cpu(u32 cpu_id)
+ 	stack_ptr = (u32)(slave_stack + (64 * cpu_id));
+ 
+ 	/* TODO: remove useless debug's in do_init_slave_cpu */
+-	debug("CPU %u: STACK: %x\n", cpu_id, stack_ptr);
+-	debug("CPU %u: comm STACK: %p\n", cpu_id, slave_stack);
++	debug("CPU %u: stack base: %x\n", cpu_id, stack_ptr);
++	debug("CPU %u: stack pool base: %p\n", cpu_id, slave_stack);
+ 	smp_set_core_boot_addr((unsigned long)hsdk_core_init_f, -1);
+ 
+ 	/* Make sure other cores see written value in memory */
+@@ -536,6 +538,247 @@ static void do_init_master_cpu(void)
+ 	}
+ }
+ 
++enum hsdk_axi_masters {
++	M_HS_CORE = 0,
++	M_HS_RTT,
++	M_AXI_TUN,
++	M_HDMI_VIDEO,
++	M_HDMI_AUDIO,
++	M_USB_HOST,
++	M_ETHERNET,
++	M_SDIO,
++	M_GPU,
++	M_DMAC_0,
++	M_DMAC_1,
++	M_DVFS
++};
++
++#define UPDATE_VAL	1
++
++/*
++ * m	master		AXI_M_m_SLV0	AXI_M_m_SLV1	AXI_M_m_OFFSET0	AXI_M_m_OFFSET1
++ * 0	HS (CBU)	0x11111111	0x63111111	0xFEDCBA98	0x0E543210
++ * 1	HS (RTT)	0x77777777	0x77777777	0xFEDCBA98	0x76543210
++ * 2	AXI Tunnel	0x88888888	0x88888888	0xFEDCBA98	0x76543210
++ * 3	HDMI-VIDEO	0x77777777	0x77777777	0xFEDCBA98	0x76543210
++ * 4	HDMI-ADUIO	0x77777777	0x77777777	0xFEDCBA98	0x76543210
++ * 5	USB-HOST	0x77777777	0x77999999	0xFEDCBA98	0x76DCBA98
++ * 6	ETHERNET	0x77777777	0x77999999	0xFEDCBA98	0x76DCBA98
++ * 7	SDIO		0x77777777	0x77999999	0xFEDCBA98	0x76DCBA98
++ * 8	GPU		0x77777777	0x77777777	0xFEDCBA98	0x76543210
++ * 9	DMAC (port #1)	0x77777777	0x77777777	0xFEDCBA98	0x76543210
++ * 10	DMAC (port #2)	0x77777777	0x77777777	0xFEDCBA98	0x76543210
++ * 11	DVFS 		0x00000000	0x60000000	0x00000000	0x00000000
++ */
++
++#define CREG_AXI_M_SLV0(m)  ((void __iomem *)(CREG_BASE + 0x020 * (m)))
++#define CREG_AXI_M_SLV1(m)  ((void __iomem *)(CREG_BASE + 0x020 * (m) + 0x004))
++#define CREG_AXI_M_OFT0(m)  ((void __iomem *)(CREG_BASE + 0x020 * (m) + 0x008))
++#define CREG_AXI_M_OFT1(m)  ((void __iomem *)(CREG_BASE + 0x020 * (m) + 0x00C))
++#define CREG_AXI_M_UPDT(m)  ((void __iomem *)(CREG_BASE + 0x020 * (m) + 0x014))
++
++#define CREG_PAE	((void __iomem *)(CREG_BASE + 0x180))
++#define CREG_PAE_UPDT	((void __iomem *)(CREG_BASE + 0x194))
++
++static void init_memory_bridge(void)
++{
++	writel(0x11111111, CREG_AXI_M_SLV0(M_HS_CORE));
++	writel(0x63111111, CREG_AXI_M_SLV1(M_HS_CORE));
++	writel(0xFEDCBA98, CREG_AXI_M_OFT0(M_HS_CORE));
++	writel(0x0E543210, CREG_AXI_M_OFT1(M_HS_CORE));
++	writel(UPDATE_VAL, CREG_AXI_M_UPDT(M_HS_CORE));
++
++	writel(0x77777777, CREG_AXI_M_SLV0(M_HS_RTT));
++	writel(0x77777777, CREG_AXI_M_SLV1(M_HS_RTT));
++	writel(0xFEDCBA98, CREG_AXI_M_OFT0(M_HS_RTT));
++	writel(0x76543210, CREG_AXI_M_OFT1(M_HS_RTT));
++	writel(UPDATE_VAL, CREG_AXI_M_UPDT(M_HS_RTT));
++
++	writel(0x88888888, CREG_AXI_M_SLV0(M_AXI_TUN));
++	writel(0x88888888, CREG_AXI_M_SLV1(M_AXI_TUN));
++	writel(0xFEDCBA98, CREG_AXI_M_OFT0(M_AXI_TUN));
++	writel(0x76543210, CREG_AXI_M_OFT1(M_AXI_TUN));
++	writel(UPDATE_VAL, CREG_AXI_M_UPDT(M_AXI_TUN));
++
++	writel(0x77777777, CREG_AXI_M_SLV0(M_HDMI_VIDEO));
++	writel(0x77777777, CREG_AXI_M_SLV1(M_HDMI_VIDEO));
++	writel(0xFEDCBA98, CREG_AXI_M_OFT0(M_HDMI_VIDEO));
++	writel(0x76543210, CREG_AXI_M_OFT1(M_HDMI_VIDEO));
++	writel(UPDATE_VAL, CREG_AXI_M_UPDT(M_HDMI_VIDEO));
++
++	writel(0x77777777, CREG_AXI_M_SLV0(M_HDMI_AUDIO));
++	writel(0x77777777, CREG_AXI_M_SLV1(M_HDMI_AUDIO));
++	writel(0xFEDCBA98, CREG_AXI_M_OFT0(M_HDMI_AUDIO));
++	writel(0x76543210, CREG_AXI_M_OFT1(M_HDMI_AUDIO));
++	writel(UPDATE_VAL, CREG_AXI_M_UPDT(M_HDMI_AUDIO));
++
++	writel(0x77777777, CREG_AXI_M_SLV0(M_USB_HOST));
++	writel(0x77999999, CREG_AXI_M_SLV1(M_USB_HOST));
++	writel(0xFEDCBA98, CREG_AXI_M_OFT0(M_USB_HOST));
++	writel(0x76DCBA98, CREG_AXI_M_OFT1(M_USB_HOST));
++	writel(UPDATE_VAL, CREG_AXI_M_UPDT(M_USB_HOST));
++
++	writel(0x77777777, CREG_AXI_M_SLV0(M_ETHERNET));
++	writel(0x77999999, CREG_AXI_M_SLV1(M_ETHERNET));
++	writel(0xFEDCBA98, CREG_AXI_M_OFT0(M_ETHERNET));
++	writel(0x76DCBA98, CREG_AXI_M_OFT1(M_ETHERNET));
++	writel(UPDATE_VAL, CREG_AXI_M_UPDT(M_ETHERNET));
++
++	writel(0x77777777, CREG_AXI_M_SLV0(M_SDIO));
++	writel(0x77999999, CREG_AXI_M_SLV1(M_SDIO));
++	writel(0xFEDCBA98, CREG_AXI_M_OFT0(M_SDIO));
++	writel(0x76DCBA98, CREG_AXI_M_OFT1(M_SDIO));
++	writel(UPDATE_VAL, CREG_AXI_M_UPDT(M_SDIO));
++
++	writel(0x77777777, CREG_AXI_M_SLV0(M_GPU));
++	writel(0x77777777, CREG_AXI_M_SLV1(M_GPU));
++	writel(0xFEDCBA98, CREG_AXI_M_OFT0(M_GPU));
++	writel(0x76543210, CREG_AXI_M_OFT1(M_GPU));
++	writel(UPDATE_VAL, CREG_AXI_M_UPDT(M_GPU));
++
++	writel(0x77777777, CREG_AXI_M_SLV0(M_DMAC_0));
++	writel(0x77777777, CREG_AXI_M_SLV1(M_DMAC_0));
++	writel(0xFEDCBA98, CREG_AXI_M_OFT0(M_DMAC_0));
++	writel(0x76543210, CREG_AXI_M_OFT1(M_DMAC_0));
++	writel(UPDATE_VAL, CREG_AXI_M_UPDT(M_DMAC_0));
++
++	writel(0x77777777, CREG_AXI_M_SLV0(M_DMAC_1));
++	writel(0x77777777, CREG_AXI_M_SLV1(M_DMAC_1));
++	writel(0xFEDCBA98, CREG_AXI_M_OFT0(M_DMAC_1));
++	writel(0x76543210, CREG_AXI_M_OFT1(M_DMAC_1));
++	writel(UPDATE_VAL, CREG_AXI_M_UPDT(M_DMAC_1));
++
++	writel(0x00000000, CREG_AXI_M_SLV0(M_DVFS));
++	writel(0x60000000, CREG_AXI_M_SLV1(M_DVFS));
++	writel(0x00000000, CREG_AXI_M_OFT0(M_DVFS));
++	writel(0x00000000, CREG_AXI_M_OFT1(M_DVFS));
++	writel(UPDATE_VAL, CREG_AXI_M_UPDT(M_DVFS));
++
++	writel(0x00000000, CREG_PAE);
++	writel(UPDATE_VAL, CREG_PAE_UPDT);
++}
++
++static void setup_clocks(void)
++{
++	ulong rate, tmp_rate;
++
++	/* Setup CPU clock */
++	if (env_common.cpu_freq.set) {
++		rate = env_common.cpu_freq.val * HZ_IN_MHZ;
++		soc_clk_ctl("cpu-pll", &rate, true); /* 100MHz - 1GHz is OK for PLL */
++		soc_clk_ctl("cpu-clk", &rate, true); /* div factor = 1 */
++	} else {
++		soc_clk_ctl("cpu-clk", &rate, false);
++	}
++	printf("HSDK: clock '%s' rate %lu MHz\n", "cpu-clk", ceil(rate, HZ_IN_MHZ));
++
++	/* Setup TUN clock */
++	if (env_common.tun_freq.set) {
++		rate = env_common.tun_freq.val * HZ_IN_MHZ;
++		if (rate >= 100 * HZ_IN_MHZ) {
++			/* 150 MHz : PLL - 150MHz; DIV = 1 */
++			/* 125 MHz : PLL - 125MHz; DIV = 1 */
++			/* 100 MHz : PLL - 100MHz; DIV = 1 */
++			soc_clk_ctl("tun-pll", &rate, true); /* 100MHz - 150MHz is OK for PLL */
++			soc_clk_ctl("tun-clk", &rate, true); /* div factor = 1 */
++		} else if (rate > 0) {
++			/* 75 MHz  : PLL - 150MHz; DIV = 2 */
++			/* 50 MHz  : PLL - 150MHz; DIV = 3 */
++			/* 25 MHz  : PLL - 150MHz; DIV = 6 */
++			tmp_rate = 150 * HZ_IN_MHZ;
++			soc_clk_ctl("tun-pll", &tmp_rate, true);
++			soc_clk_ctl("tun-clk", &rate, true); /* div factor - autocalc */
++		} else {
++			/* 25 MHz  : PLL - DNC;    DIV = OFF */
++			// TODO: add
++		}
++	} else {
++		soc_clk_ctl("tun-clk", &rate, false);
++	}
++	printf("HSDK: clock '%s' rate %lu MHz\n", "tun-clk", ceil(rate, HZ_IN_MHZ));
++
++	if (env_common.axi_freq.set) {
++		rate = env_common.axi_freq.val * HZ_IN_MHZ;
++		/* firstly we need to increase SYS dividers factors to set
++		 * 'safe' freq values */
++		tmp_rate = 33333333;
++		soc_clk_ctl("sys-apb", &tmp_rate, true);
++		soc_clk_ctl("sys-axi", &tmp_rate, true);
++		soc_clk_ctl("sys-eth", &tmp_rate, true);
++		soc_clk_ctl("sys-usb", &tmp_rate, true);
++		soc_clk_ctl("sys-sdio", &tmp_rate, true);
++		soc_clk_ctl("sys-hdmi", &tmp_rate, true);
++		soc_clk_ctl("sys-gfx-core", &tmp_rate, true);
++		soc_clk_ctl("sys-gfx-dma", &tmp_rate, true);
++		soc_clk_ctl("sys-gfx-cfg", &tmp_rate, true);
++		soc_clk_ctl("sys-dmac-core", &tmp_rate, true);
++		soc_clk_ctl("sys-dmac-cfg", &tmp_rate, true);
++		soc_clk_ctl("sys-sdio-ref", &tmp_rate, true);
++		soc_clk_ctl("sys-spi", &tmp_rate, true);
++		soc_clk_ctl("sys-i2c", &tmp_rate, true);
++		soc_clk_ctl("sys-uart", &tmp_rate, true);
++		soc_clk_ctl("sys-ebi", &tmp_rate, true);
++
++		/* update (increase) PLL clock */
++		if (rate == 800 * HZ_IN_MHZ) {
++			tmp_rate = 800 * HZ_IN_MHZ;
++			soc_clk_ctl("sys-pll", &tmp_rate, true);
++			soc_clk_ctl("sys-axi", &tmp_rate, true);
++		} else if (rate == 600 * HZ_IN_MHZ) {
++			tmp_rate = 600 * HZ_IN_MHZ;
++			soc_clk_ctl("sys-pll", &tmp_rate, true);
++			soc_clk_ctl("sys-axi", &tmp_rate, true);
++		} else if (rate <= 400 * HZ_IN_MHZ) {
++			tmp_rate = 400 * HZ_IN_MHZ;
++			soc_clk_ctl("sys-pll", &tmp_rate, true);
++			soc_clk_ctl("sys-axi", &rate, true); /* div factor - autocalc */
++		}
++
++		/* return SYS dividers factors to 'fast' freq values */
++		tmp_rate = 200 * HZ_IN_MHZ;
++		soc_clk_ctl("sys-apb", &tmp_rate, true);
++		tmp_rate = 400 * HZ_IN_MHZ;
++		soc_clk_ctl("sys-eth", &tmp_rate, true);
++		soc_clk_ctl("sys-usb", &tmp_rate, true);
++		soc_clk_ctl("sys-sdio", &tmp_rate, true);
++		soc_clk_ctl("sys-hdmi", &tmp_rate, true);
++		tmp_rate = 800 * HZ_IN_MHZ;
++		soc_clk_ctl("sys-gfx-core", &tmp_rate, true);
++		tmp_rate = 400 * HZ_IN_MHZ;
++		soc_clk_ctl("sys-gfx-dma", &tmp_rate, true);
++		tmp_rate = 200 * HZ_IN_MHZ;
++		soc_clk_ctl("sys-gfx-cfg", &tmp_rate, true);
++		tmp_rate = 400 * HZ_IN_MHZ;
++		soc_clk_ctl("sys-dmac-core", &tmp_rate, true);
++		tmp_rate = 200 * HZ_IN_MHZ;
++		soc_clk_ctl("sys-dmac-cfg", &tmp_rate, true);
++		tmp_rate = 100 * HZ_IN_MHZ;
++		soc_clk_ctl("sys-sdio-ref", &tmp_rate, true);
++		tmp_rate = 33333333;
++		soc_clk_ctl("sys-spi", &tmp_rate, true);
++		tmp_rate = 200 * HZ_IN_MHZ;
++		soc_clk_ctl("sys-i2c", &tmp_rate, true);
++		tmp_rate = 33333333;
++		soc_clk_ctl("sys-uart", &tmp_rate, true);
++		tmp_rate = 50 * HZ_IN_MHZ;
++		soc_clk_ctl("sys-ebi", &tmp_rate, true);
++	}
++	soc_clk_ctl("sys-axi", &rate, false);
++	printf("HSDK: clock '%s' rate %lu MHz\n", "axi-clk", ceil(rate, HZ_IN_MHZ));
++
++	soc_clk_ctl("ddr-clk", &rate, false);
++	printf("HSDK: clock '%s' rate %lu MHz\n", "ddr-clk", ceil(rate, HZ_IN_MHZ));
++}
++
++static void do_init_claster(void)
++{
++	/* A multi-core ARC HS configuration always includes only one
++	 * AUX_NON_VOLATILE_LIMIT register, which is shared by all the cores. */
++	init_master_nvlim();
++
++	init_memory_bridge();
++}
++
+ /* ********************* SMP: END ********************* */
+ 
+ static int check_master_cpu_id(void)
+@@ -551,8 +794,6 @@ static int check_master_cpu_id(void)
+ static int prepare_cpus(u32 *cpu_start_reg)
+ {
+ 	u32 i;
+-	ulong rate;
+-	bool set;
+ 	int ret;
+ 
+ 	ret = check_master_cpu_id();
+@@ -569,17 +810,9 @@ static int prepare_cpus(u32 *cpu_start_reg)
+ 
+ 	do_init_slave_cpus();
+ 
+-	rate = env_common.cpu_freq.val * 1000000;
+-	set = env_common.cpu_freq.set;
+-	soc_clk_ctl("cpu-clk", &rate, set);
+-	/* TODO: set AXI and TUN frequency, not only read */
+-	soc_clk_ctl("sys-clk", &rate, false);
+-	soc_clk_ctl("tun-clk", &rate, false);
+-	soc_clk_ctl("ddr-clk", &rate, false);
++	setup_clocks();
+ 
+-	/* A multi-core ARC HS configuration always includes only one
+-	 * AUX_NON_VOLATILE_LIMIT register, which is shared by all the cores. */
+-	init_master_nvlim();
++	do_init_claster();
+ 
+ 	/* Prepare CREG_CPU_START for kicking chosen CPUs */
+ 	*cpu_start_reg = prepare_cpu_ctart_reg();
+-- 
+2.11.0
+

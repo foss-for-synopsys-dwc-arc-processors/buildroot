@@ -1,0 +1,223 @@
+From d2c42047dabd6b9eeb9de2ae5a6f056e54bbbe01 Mon Sep 17 00:00:00 2001
+From: Eugeniy Paltsev <Eugeniy.Paltsev@synopsys.com>
+Date: Mon, 9 Oct 2017 19:25:51 +0300
+Subject: [PATCH 40/46] SPI Flash: add support of sst26wf* flash series
+
+sst26wf flash series block protection implementation differs
+from other SST series, so add implementation for sst26wf
+lock/unlock/is_locked functions.
+
+Signed-off-by: Eugeniy Paltsev <Eugeniy.Paltsev@synopsys.com>
+---
+ drivers/mtd/spi/spi_flash.c | 188 ++++++++++++++++++++++++++++++++++++++++++++
+ 1 file changed, 188 insertions(+)
+
+diff --git a/drivers/mtd/spi/spi_flash.c b/drivers/mtd/spi/spi_flash.c
+index 51e28bf07b..163471d143 100644
+--- a/drivers/mtd/spi/spi_flash.c
++++ b/drivers/mtd/spi/spi_flash.c
+@@ -839,6 +839,184 @@ int stm_unlock(struct spi_flash *flash, u32 ofs, size_t len)
+ }
+ #endif
+ 
++#if defined(CONFIG_SPI_FLASH_SST)
++#define SST26_CMD_READ_BPR		0x72
++#define SST26_CMD_WRITE_BPR		0x42
++
++#define BLOCK_64K_SZ			0x10000
++#define MAX_BPR_REG_LEN			(18 + 1)
++#define SST26WF_BOUND_REG_SIZE		((32 + 4 * 8) * 1024)
++
++bool sst26_check_bpr(u32 bpr_size, u8 *cmd, u32 bit)
++{
++	return !!(cmd[bpr_size - (bit / 8) - 1] & BIT(bit % 8));
++}
++
++bool sst26_clear_bpr(u32 bpr_size, u8 *cmd, u32 bit)
++{
++	cmd[bpr_size - (bit / 8) - 1] &= ~BIT(bit % 8);
++	return false;
++}
++
++bool sst26_set_bpr(u32 bpr_size, u8 *cmd, u32 bit)
++{
++	cmd[bpr_size - (bit / 8) - 1] |= BIT(bit % 8);
++	return false;
++}
++
++enum lock_ctl {
++	CTL_LOCK,
++	CTL_UNLOCK,
++	CTL_CHECK
++};
++
++/*
++ * sst26wf016/sst26wf032/sst26wf064 have next block protection:
++ * 4x   - 8  KByte blocks - read & write protection bits - upper addresses
++ * 1x   - 32 KByte blocks - write protection bits
++ * rest - 64 KByte blocks - write protection bits
++ * 1x   - 32 KByte blocks - write protection bits
++ * 4x   - 8  KByte blocks - read & write protection bits - lower addresses
++ *
++ * We'll support only per 64k lock/unlock so lower and upper 64 KByte region
++ * will be treated as single block.
++ */
++
++/*
++ * Lock, unlock or check lock status of the flash region of the flash (depending
++ * on the lock_ctl value)
++ */
++int sst26_lock_ctl(struct spi_flash *flash, u32 ofs, size_t len, enum lock_ctl ctl)
++{
++	u32 i, bpr_ptr, rptr_64k, lptr_64k, bpr_size;
++	bool lower_64k = false, upper_64k = false;
++	u8 cmd, bpr_buff[MAX_BPR_REG_LEN] = {};
++	int ret;
++
++	bool (* bpr_bit_process) (u32 bpr_size, u8 *, u32);
++
++	/* Check length and offset for 64k alignment */
++	if ((ofs & 0xFFFF) || (len & 0xFFFF))
++		return -EINVAL;
++
++	if (ofs + len > flash->size)
++		return -EINVAL;
++
++	/* SST26 family has only 16 Mbit, 32 Mbit and 64 Mbit IC */
++	if (flash->size != 0x200000 &&
++	    flash->size != 0x400000 &&
++	    flash->size != 0x800000)
++		return -EINVAL;
++
++	bpr_size = 2 + (flash->size / BLOCK_64K_SZ / 8);
++
++	cmd = SST26_CMD_READ_BPR;
++	ret = spi_flash_read_common(flash, &cmd, 1, bpr_buff, bpr_size);
++	if (ret < 0) {
++		printf("SF: fail to read block-protection register\n");
++		return ret;
++	}
++
++	if (ctl == CTL_LOCK)
++		bpr_bit_process = sst26_set_bpr;
++	else if (ctl == CTL_UNLOCK)
++		bpr_bit_process = sst26_clear_bpr;
++	else
++		bpr_bit_process = sst26_check_bpr;
++
++	rptr_64k = min_t(u32, ofs + len , flash->size - SST26WF_BOUND_REG_SIZE);
++	lptr_64k = max_t(u32, ofs, SST26WF_BOUND_REG_SIZE);
++
++	upper_64k = ((ofs + len) > (flash->size - SST26WF_BOUND_REG_SIZE));
++	lower_64k = (ofs < SST26WF_BOUND_REG_SIZE);
++
++	/* Lower bits in block-protection register are about 64k region */
++	bpr_ptr = lptr_64k / BLOCK_64K_SZ - 1;
++
++	/* Process 64K blocks region */
++	while (lptr_64k < rptr_64k) {
++		if (bpr_bit_process(bpr_size, bpr_buff, bpr_ptr))
++			return 1;
++
++		bpr_ptr++;
++		lptr_64k += BLOCK_64K_SZ;
++	}
++
++	/* 32K and 8K region bits in BPR are after 64k region bits */
++	bpr_ptr = (flash->size - 2 * SST26WF_BOUND_REG_SIZE) / BLOCK_64K_SZ;
++
++	/* Process lower 32K block region */
++	if (lower_64k)
++		if (bpr_bit_process(bpr_size, bpr_buff, bpr_ptr))
++			return 1;
++
++	bpr_ptr++;
++
++	/* Process upper 32K block region */
++	if (upper_64k)
++		if (bpr_bit_process(bpr_size, bpr_buff, bpr_ptr))
++			return 1;
++
++	bpr_ptr++;
++
++	/* Process lower 8K block region */
++	for (i = 0; i < 4; i++) {
++		if (lower_64k)
++			if (bpr_bit_process(bpr_size, bpr_buff, bpr_ptr))
++				return 1;
++
++		/* In 8K area BPR has both read and write protection bits */
++		bpr_ptr += 2;
++	}
++
++	/* Process upper 8K block region */
++	for (i = 0; i < 4; i++) {
++		if (upper_64k)
++			if (bpr_bit_process(bpr_size, bpr_buff, bpr_ptr))
++				return 1;
++
++		/* In 8K area BPR has both read and write protection bits */
++		bpr_ptr += 2;
++	}
++
++	/* If we check region status we don't need to write BPR back */
++	if (ctl == CTL_CHECK)
++		return 0;
++
++	cmd = SST26_CMD_WRITE_BPR;
++	ret = spi_flash_write_common(flash, &cmd, 1, bpr_buff, bpr_size);
++	if (ret < 0) {
++		printf("SF: fail to write block-protection register\n");
++		return ret;
++	}
++
++	return 0;
++}
++
++int sst26_unlock(struct spi_flash *flash, u32 ofs, size_t len)
++{
++	return sst26_lock_ctl(flash, ofs, len, CTL_UNLOCK);
++}
++
++int sst26_lock(struct spi_flash *flash, u32 ofs, size_t len)
++{
++	return sst26_lock_ctl(flash, ofs, len, CTL_LOCK);
++}
++
++int sst26_is_locked(struct spi_flash *flash, u32 ofs, size_t len)
++{
++	/*
++	 * is_locked function is used for check before reading or erasing flash
++	 * region, so offset and length might be not 64k allighned, so adjust
++	 * them to be 64k allighned as sst26_lock_ctl works only with 64k
++	 * allighned regions.
++	 */
++	ofs -= ofs & 0xFFFF;
++	len = len & 0xFFFF ? (len & ~0xFFFF) + BLOCK_64K_SZ : len;
++
++	return sst26_lock_ctl(flash, ofs, len, CTL_CHECK);
++}
++#endif
+ 
+ #ifdef CONFIG_SPI_FLASH_MACRONIX
+ static int macronix_quad_enable(struct spi_flash *flash)
+@@ -1030,6 +1208,16 @@ int spi_flash_scan(struct spi_flash *flash)
+ 	}
+ #endif
+ 
++/* sst26wf series block protection implementation differs from other series */
++#if defined(CONFIG_SPI_FLASH_SST)
++	if (JEDEC_MFR(info) == SPI_FLASH_CFI_MFR_SST &&
++	    (JEDEC_ID(info) >> 8) == 0x26) {
++		flash->flash_lock = sst26_lock;
++		flash->flash_unlock = sst26_unlock;
++		flash->flash_is_locked = sst26_is_locked;
++	}
++#endif
++
+ 	/* Compute the flash size */
+ 	flash->shift = (flash->dual_flash & SF_DUAL_PARALLEL_FLASH) ? 1 : 0;
+ 	flash->page_size = info->page_size;
+-- 
+2.11.0
+

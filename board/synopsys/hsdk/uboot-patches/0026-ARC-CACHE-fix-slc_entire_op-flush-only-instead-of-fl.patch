@@ -1,0 +1,52 @@
+From 3c31cb3bed5557beb4db1762cfff021320729568 Mon Sep 17 00:00:00 2001
+From: Eugeniy Paltsev <Eugeniy.Paltsev@synopsys.com>
+Date: Wed, 20 Dec 2017 20:11:07 +0300
+Subject: [PATCH 26/46] ARC: CACHE: fix slc_entire_op: flush only instead of
+ flush-n-inv
+
+Signed-off-by: Eugeniy Paltsev <Eugeniy.Paltsev@synopsys.com>
+---
+ arch/arc/lib/cache.c | 15 +++++++++------
+ 1 file changed, 9 insertions(+), 6 deletions(-)
+
+diff --git a/arch/arc/lib/cache.c b/arch/arc/lib/cache.c
+index 2764ef3f54..05275e2bd8 100644
+--- a/arch/arc/lib/cache.c
++++ b/arch/arc/lib/cache.c
+@@ -53,24 +53,27 @@ bool ioc_enable __section(".data") = false;
+ 
+ noinline static void __slc_entire_op(const int op)
+ {
+-	unsigned int ctrl, r = ARC_AUX_SLC_CTRL;
++	unsigned int ctrl;
+ 
+-	ctrl = read_aux_reg(r);
++	ctrl = read_aux_reg(ARC_AUX_SLC_CTRL);
+ 
+ 	if (!(op & OP_FLUSH))		/* i.e. OP_INV */
+ 		ctrl &= ~SLC_CTRL_IM;	/* clear IM: Disable flush before Inv */
+ 	else
+ 		ctrl |= SLC_CTRL_IM;
+ 
+-	write_aux_reg(r, ctrl);
++	write_aux_reg(ARC_AUX_SLC_CTRL, ctrl);
+ 
+-	write_aux_reg(ARC_AUX_SLC_INVALIDATE, 1);
++	if (op & OP_INV)	/* Inv or flush-n-inv use same cmd reg */
++		write_aux_reg(ARC_AUX_SLC_INVALIDATE, 0x1);
++	else
++		write_aux_reg(ARC_AUX_SLC_FLUSH, 0x1);
+ 
+ 	/* Make sure "busy" bit reports correct stataus, see STAR 9001165532 */
+-	read_aux_reg(r);
++	read_aux_reg(ARC_AUX_SLC_CTRL);
+ 
+ 	/* Important to wait for flush to complete */
+-	while (read_aux_reg(r) & SLC_CTRL_BUSY);
++	while (read_aux_reg(ARC_AUX_SLC_CTRL) & SLC_CTRL_BUSY);
+ }
+ 
+ static void slc_upper_region_init(void)
+-- 
+2.11.0
+

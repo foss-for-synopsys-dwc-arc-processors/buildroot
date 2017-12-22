@@ -1,0 +1,31 @@
+From 1bfc5dc22320b6f1e9d1a57a7c1d6a01b7dc4b87 Mon Sep 17 00:00:00 2001
+From: Eugeniy Paltsev <Eugeniy.Paltsev@synopsys.com>
+Date: Mon, 9 Oct 2017 20:05:18 +0300
+Subject: [PATCH 41/46] SF: add add support for sst26wf016, sst26wf032,
+ sst26wf064
+
+This commit adds support for the SST sst26wf016, sst26wf032
+and sst26wf064 flash IC.
+
+Signed-off-by: Eugeniy Paltsev <Eugeniy.Paltsev@synopsys.com>
+---
+ drivers/mtd/spi/spi_flash_ids.c | 3 +++
+ 1 file changed, 3 insertions(+)
+
+diff --git a/drivers/mtd/spi/spi_flash_ids.c b/drivers/mtd/spi/spi_flash_ids.c
+index 13f64e773f..e18bc50dcf 100644
+--- a/drivers/mtd/spi/spi_flash_ids.c
++++ b/drivers/mtd/spi/spi_flash_ids.c
+@@ -149,6 +149,9 @@ const struct spi_flash_info spi_flash_ids[] = {
+ 	{"sst25wf040",	   INFO(0xbf2504, 0x0,	64 * 1024,     8, SECT_4K | SST_WR) },
+ 	{"sst25wf040b",	   INFO(0x621613, 0x0,	64 * 1024,     8, SECT_4K) },
+ 	{"sst25wf080",	   INFO(0xbf2505, 0x0,	64 * 1024,    16, SECT_4K | SST_WR) },
++	{"sst26wf016",	   INFO(0xbf2651, 0x0,	64 * 1024,    32, SECT_4K) },
++	{"sst26wf032",	   INFO(0xbf2622, 0x0,	64 * 1024,    64, SECT_4K) },
++	{"sst26wf064",	   INFO(0xbf2643, 0x0,	64 * 1024,   128, SECT_4K) },
+ #endif
+ #ifdef CONFIG_SPI_FLASH_WINBOND		/* WINBOND */
+ 	{"w25p80",	   INFO(0xef2014, 0x0,	64 * 1024,    16, 0) },
+-- 
+2.11.0
+

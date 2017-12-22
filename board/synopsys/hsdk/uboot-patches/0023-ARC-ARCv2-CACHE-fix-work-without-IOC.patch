@@ -1,0 +1,273 @@
+From fe2280cca76aed9fb1c76c4cec721865a503aa2d Mon Sep 17 00:00:00 2001
+From: Eugeniy Paltsev <Eugeniy.Paltsev@synopsys.com>
+Date: Mon, 18 Dec 2017 21:32:08 +0300
+Subject: [PATCH 23/46] ARC: ARCv2: CACHE: fix work without IOC
+
+Previous slc_line_op implementation is broken. Fix it by replacing
+with region operations.
+
+Signed-off-by: Eugeniy Paltsev <Eugeniy.Paltsev@synopsys.com>
+---
+ arch/arc/include/asm/arcregs.h |   4 ++
+ arch/arc/lib/cache.c           | 158 ++++++++++++++++++++++-------------------
+ 2 files changed, 89 insertions(+), 73 deletions(-)
+
+diff --git a/arch/arc/include/asm/arcregs.h b/arch/arc/include/asm/arcregs.h
+index ba1f7bac77..9e546ccf21 100644
+--- a/arch/arc/include/asm/arcregs.h
++++ b/arch/arc/include/asm/arcregs.h
+@@ -63,6 +63,10 @@
+ #define ARC_AUX_SLC_INVALIDATE	0x905
+ #define ARC_AUX_SLC_IVDL	0x910
+ #define ARC_AUX_SLC_FLDL	0x912
++#define ARC_AUX_SLC_RGN_START	0x914
++#define ARC_AUX_SLC_RGN_START1	0x915
++#define ARC_AUX_SLC_RGN_END	0x916
++#define ARC_AUX_SLC_RGN_END1	0x917
+ #define ARC_BCR_CLUSTER		0xcf
+ 
+ /* IO coherency related auxiliary registers */
+diff --git a/arch/arc/lib/cache.c b/arch/arc/lib/cache.c
+index a3f9fc23ad..2764ef3f54 100644
+--- a/arch/arc/lib/cache.c
++++ b/arch/arc/lib/cache.c
+@@ -26,6 +26,12 @@
+ #define OP_FLUSH	0x2
+ #define OP_INV_IC	0x3
+ 
++/* Bit val in SLC_CONTROL */
++#define SLC_CTRL_DIS		0x001
++#define SLC_CTRL_IM		0x040
++#define SLC_CTRL_BUSY		0x100
++#define SLC_CTRL_RGN_OP_INV	0x200
++
+ /*
+  * By default that variable will fall into .bss section.
+  * But .bss section is not relocated and so it will be initilized before
+@@ -45,87 +51,85 @@ bool ioc_exists __section(".data") = false;
+ /* To force enable IOC set ioc_enable to 'true' */
+ bool ioc_enable __section(".data") = false;
+ 
+-static unsigned int __before_slc_op(const int op)
++noinline static void __slc_entire_op(const int op)
+ {
+-	unsigned int reg = reg;
++	unsigned int ctrl, r = ARC_AUX_SLC_CTRL;
+ 
+-	if (op == OP_INV) {
+-		/*
+-		 * IM is set by default and implies Flush-n-inv
+-		 * Clear it here for vanilla inv
+-		 */
+-		reg = read_aux_reg(ARC_AUX_SLC_CTRL);
+-		write_aux_reg(ARC_AUX_SLC_CTRL, reg & ~DC_CTRL_INV_MODE_FLUSH);
+-	}
++	ctrl = read_aux_reg(r);
+ 
+-	return reg;
+-}
+-
+-static void __after_slc_op(const int op, unsigned int reg)
+-{
+-	if (op & OP_FLUSH) {	/* flush / flush-n-inv both wait */
+-		/*
+-		 * Make sure "busy" bit reports correct status,
+-		 * see STAR 9001165532
+-		 */
+-		read_aux_reg(ARC_AUX_SLC_CTRL);
+-		while (read_aux_reg(ARC_AUX_SLC_CTRL) &
+-		       DC_CTRL_FLUSH_STATUS)
+-			;
+-	}
+-
+-	/* Switch back to default Invalidate mode */
+-	if (op == OP_INV)
+-		write_aux_reg(ARC_AUX_SLC_CTRL, reg | DC_CTRL_INV_MODE_FLUSH);
+-}
+-
+-static inline void __slc_line_loop(unsigned long paddr, unsigned long sz,
+-				   const int op)
+-{
+-	unsigned int aux_cmd;
+-	int num_lines;
++	if (!(op & OP_FLUSH))		/* i.e. OP_INV */
++		ctrl &= ~SLC_CTRL_IM;	/* clear IM: Disable flush before Inv */
++	else
++		ctrl |= SLC_CTRL_IM;
+ 
+-#define SLC_LINE_MASK	(~(slc_line_sz - 1))
++	write_aux_reg(r, ctrl);
+ 
+-	aux_cmd = op & OP_INV ? ARC_AUX_SLC_IVDL : ARC_AUX_SLC_FLDL;
++	write_aux_reg(ARC_AUX_SLC_INVALIDATE, 1);
+ 
+-	sz += paddr & ~SLC_LINE_MASK;
+-	paddr &= SLC_LINE_MASK;
++	/* Make sure "busy" bit reports correct stataus, see STAR 9001165532 */
++	read_aux_reg(r);
+ 
+-	num_lines = DIV_ROUND_UP(sz, slc_line_sz);
++	/* Important to wait for flush to complete */
++	while (read_aux_reg(r) & SLC_CTRL_BUSY);
++}
+ 
+-	while (num_lines-- > 0) {
+-		write_aux_reg(aux_cmd, paddr);
+-		paddr += slc_line_sz;
+-	}
++static void slc_upper_region_init(void)
++{
++	/*
++	 * ARC_AUX_SLC_RGN_END1 and ARC_AUX_SLC_RGN_START1 are always == 0
++	 * as we don't use PAE40.
++	 */
++	write_aux_reg(ARC_AUX_SLC_RGN_END1, 0);
++	write_aux_reg(ARC_AUX_SLC_RGN_START1, 0);
+ }
+ 
+-static inline void __slc_entire_op(const int cacheop)
++noinline void __slc_rgn_op(unsigned long paddr, unsigned long sz, const int op)
+ {
+-	int aux;
+-	unsigned int ctrl_reg = __before_slc_op(cacheop);
++	unsigned int ctrl;
++	unsigned long end;
++
++	/*
++	 * The Region Flush operation is specified by CTRL.RGN_OP[11..9]
++	 *  - b'000 (default) is Flush,
++	 *  - b'001 is Invalidate if CTRL.IM == 0
++	 *  - b'001 is Flush-n-Invalidate if CTRL.IM == 1
++	 */
++	ctrl = read_aux_reg(ARC_AUX_SLC_CTRL);
++
++	/* Don't rely on default value of IM bit */
++	if (!(op & OP_FLUSH))		/* i.e. OP_INV */
++		ctrl &= ~SLC_CTRL_IM;	/* clear IM: Disable flush before Inv */
++	else
++		ctrl |= SLC_CTRL_IM;
+ 
+-	if (cacheop & OP_INV)	/* Inv or flush-n-inv use same cmd reg */
+-		aux = ARC_AUX_SLC_INVALIDATE;
++	if (op & OP_INV)
++		ctrl |= SLC_CTRL_RGN_OP_INV;	/* Inv or flush-n-inv */
+ 	else
+-		aux = ARC_AUX_SLC_FLUSH;
++		ctrl &= ~SLC_CTRL_RGN_OP_INV;
+ 
+-	write_aux_reg(aux, 0x1);
++	write_aux_reg(ARC_AUX_SLC_CTRL, ctrl);
+ 
+-	__after_slc_op(cacheop, ctrl_reg);
+-}
++	/*
++	 * Lower bits are ignored, no need to clip
++	 * END needs to be setup before START (latter triggers the operation)
++	 * END can't be same as START, so add (l2_line_sz - 1) to sz
++	 */
++	end = paddr + sz + slc_line_sz - 1;
+ 
+-static inline void __slc_line_op(unsigned long paddr, unsigned long sz,
+-				 const int cacheop)
+-{
+-	unsigned int ctrl_reg = __before_slc_op(cacheop);
+-	__slc_line_loop(paddr, sz, cacheop);
+-	__after_slc_op(cacheop, ctrl_reg);
++	/*
++	 * Upper addresses (ARC_AUX_SLC_RGN_END1 and ARC_AUX_SLC_RGN_START1)
++	 * are always == 0 as we don't use PAE40, so we only setup lower ones
++	 * (ARC_AUX_SLC_RGN_END and ARC_AUX_SLC_RGN_START)
++	 */
++	write_aux_reg(ARC_AUX_SLC_RGN_END, end);
++	write_aux_reg(ARC_AUX_SLC_RGN_START, paddr);
++
++	/* Make sure "busy" bit reports correct stataus, see STAR 9001165532 */
++	read_aux_reg(ARC_AUX_SLC_CTRL);
++
++	while (read_aux_reg(ARC_AUX_SLC_CTRL) & SLC_CTRL_BUSY);
+ }
+-#else
+-#define __slc_entire_op(cacheop)
+-#define __slc_line_op(paddr, sz, cacheop)
+-#endif
++#endif /* CONFIG_ISA_ARCV2 */
+ 
+ #ifdef CONFIG_ISA_ARCV2
+ static void read_decode_cache_bcr_arcv2(void)
+@@ -247,7 +251,10 @@ void cache_init(void)
+ 		write_aux_reg(ARC_AUX_IO_COH_ENABLE, 1);
+ 
+ 	}
+-#endif
++
++	if (slc_exists)
++		slc_upper_region_init();
++#endif /* CONFIG_ISA_ARCV2 */
+ }
+ 
+ int icache_status(void)
+@@ -275,7 +282,6 @@ void icache_disable(void)
+ 			      IC_CTRL_CACHE_DISABLE);
+ }
+ 
+-#ifndef CONFIG_SYS_DCACHE_OFF
+ void invalidate_icache_all(void)
+ {
+ 	/* Any write to IC_IVIC register triggers invalidation of entire I$ */
+@@ -283,12 +289,12 @@ void invalidate_icache_all(void)
+ 		write_aux_reg(ARC_AUX_IC_IVIC, 1);
+ 		read_aux_reg(ARC_AUX_IC_CTRL);	/* blocks */
+ 	}
+-}
+-#else
+-void invalidate_icache_all(void)
+-{
+-}
++
++#ifdef CONFIG_ISA_ARCV2
++	if (slc_exists)
++		__slc_entire_op(OP_INV);
+ #endif
++}
+ 
+ int dcache_status(void)
+ {
+@@ -415,6 +421,9 @@ static inline void __dc_line_op(unsigned long paddr, unsigned long sz,
+ 
+ void invalidate_dcache_range(unsigned long start, unsigned long end)
+ {
++	if (start >= end)
++		return;
++
+ #ifdef CONFIG_ISA_ARCV2
+ 	if (!ioc_exists)
+ #endif
+@@ -422,12 +431,15 @@ void invalidate_dcache_range(unsigned long start, unsigned long end)
+ 
+ #ifdef CONFIG_ISA_ARCV2
+ 	if (slc_exists && !ioc_exists)
+-		__slc_line_op(start, end - start, OP_INV);
++		__slc_rgn_op(start, end - start, OP_INV);
+ #endif
+ }
+ 
+ void flush_dcache_range(unsigned long start, unsigned long end)
+ {
++	if (start >= end)
++		return;
++
+ #ifdef CONFIG_ISA_ARCV2
+ 	if (!ioc_exists)
+ #endif
+@@ -435,7 +447,7 @@ void flush_dcache_range(unsigned long start, unsigned long end)
+ 
+ #ifdef CONFIG_ISA_ARCV2
+ 	if (slc_exists && !ioc_exists)
+-		__slc_line_op(start, end - start, OP_FLUSH);
++		__slc_rgn_op(start, end - start, OP_FLUSH);
+ #endif
+ }
+ 
+-- 
+2.11.0
+

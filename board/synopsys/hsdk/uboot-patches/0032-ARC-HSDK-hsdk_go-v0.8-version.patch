@@ -1,0 +1,568 @@
+From 600f74e0a9f3978ee85b47b72edd810c6df980bb Mon Sep 17 00:00:00 2001
+From: Eugeniy Paltsev <Eugeniy.Paltsev@synopsys.com>
+Date: Fri, 22 Dec 2017 13:53:31 +0300
+Subject: [PATCH 32/46] ARC: HSDK: hsdk_go: v0.8 version
+
+The new u-boot with significant changes is ready.
+  * Fix u-boot work with IOC disabled. There were several problems like
+    broken implementation SLC region/line operations. Now we use u-boot
+    without IOC by default.
+  * 'hsdk_go' is now split to 'hsdk_go' and 'hsdk_init', so now there are several
+    boot flows:
+      1) hsdk_init -> hsdk_go
+      2) hsdk_init -> bootm
+      3) bootm
+  * 'hsdk_clock print_all' subcommand is implemented.
+  * hsdk_clock print' output re-arranged.
+  * Sys-hdmi, Sys-ebi, Hdmi-clk, Hdmi-pll clocks are removed from
+    'hsdk_clock print' output.
+  * Fix SYS clock domain settings to set GFX_CORE clock to 800MHz (instead of 400MHz)
+  * ROM and PWM clocks were added to 'hsdk_clock print' output.
+  * Now we setup both TUN, ROM and PWM dividers when we change TUN frequency.
+
+Signed-off-by: Eugeniy Paltsev <Eugeniy.Paltsev@synopsys.com>
+---
+ board/synopsys/hsdk/hsdk-cmd.c | 249 ++++++++++++++++++++++++++++++++---------
+ 1 file changed, 195 insertions(+), 54 deletions(-)
+
+diff --git a/board/synopsys/hsdk/hsdk-cmd.c b/board/synopsys/hsdk/hsdk-cmd.c
+index 1fad17adf9..b706901d6c 100644
+--- a/board/synopsys/hsdk/hsdk-cmd.c
++++ b/board/synopsys/hsdk/hsdk-cmd.c
+@@ -14,7 +14,7 @@
+ 	#error "hsdk_go will not work with BIG endian CPU"
+ #endif
+ 
+-#define HSDKGO_VERSION	"0.7"
++#define HSDKGO_VERSION	"0.8"
+ 
+ #define ceil(x, y) ({ ulong __x = (x), __y = (y); (__x + __y - 1) / __y; })
+ 
+@@ -34,6 +34,7 @@ enum clk_ctl {
+ 	CLK_PRINT	= BIT(4)  /* print frequency */
+ };
+ 
++/* TODO: use local */
+ void smp_set_core_boot_addr(unsigned long addr, int corenr);
+ 
+ enum env_type {
+@@ -164,17 +165,21 @@ static const struct hsdk_env_map_common env_map_clock[] = {
+ };
+ 
+ static const struct hsdk_env_map_core env_map_core[] = {
+-	{ "core_entry",	ENV_HEX, true,	{0, 0, 0, 0}, {U32_MAX, U32_MAX, U32_MAX, U32_MAX},	&env_core.entry },
+ 	{ "core_iccm",	ENV_HEX, true,	{NO_CCM, 0, NO_CCM, 0}, {NO_CCM, 0xF, NO_CCM, 0xF},	&env_core.iccm },
+ 	{ "core_dccm",	ENV_HEX, true,	{NO_CCM, 0, NO_CCM, 0}, {NO_CCM, 0xF, NO_CCM, 0xF},	&env_core.dccm },
+ 	{}
+ };
+ 
+-static const struct hsdk_env_map_common env_map_bootm[] = {
++static const struct hsdk_env_map_common env_map_mask[] = {
+ 	{ "core_mask",		ENV_HEX, false,	0x1, 0xF,	&env_common.core_mask },
+ 	{}
+ };
+ 
++static const struct hsdk_env_map_core env_map_go[] = {
++	{ "core_entry",	ENV_HEX, true,	{0, 0, 0, 0}, {U32_MAX, U32_MAX, U32_MAX, U32_MAX},	&env_core.entry },
++	{}
++};
++
+ static void env_clear_common(u32 index, const struct hsdk_env_map_common *map)
+ {
+ 	map[index].val->val = 0;
+@@ -201,16 +206,26 @@ static int env_read_common(u32 index, const struct hsdk_env_map_common *map)
+ 	return 0;
+ }
+ 
++static int env_clear_core(u32 index, const struct hsdk_env_map_core *map)
++{
++	u32 i;
++
++	for (i = 0; i < NR_CPUS; i++) {
++		(*map[index].val)[i].val = 0;
++		(*map[index].val)[i].set = false;
++	}
++}
++
+ /* process core specific variables */
+-static int env_read_core(u32 index)
++static int env_read_core(u32 index, const struct hsdk_env_map_core *map)
+ {
+ 	u32 i, val;
+ 	char comand[MAX_CMD_LEN];
+ 
+ 	for (i = 0; i < NR_CPUS; i++) {
+-		sprintf(comand, "%s_%u", env_map_core[index].env_name, i);
++		sprintf(comand, "%s_%u", map[index].env_name, i);
+ 		if (!env_get_yesno(comand)) {
+-			if (env_map_core[index].type == ENV_HEX) {
++			if (map[index].type == ENV_HEX) {
+ 				val = (u32)env_get_hex(comand, 0);
+ 				debug("ENV: %s: = %#x\n", comand, val);
+ 			} else {
+@@ -218,8 +233,8 @@ static int env_read_core(u32 index)
+ 				debug("ENV: %s: = %d\n", comand, val);
+ 			}
+ 
+-			(*env_map_core[index].val)[i].val = val;
+-			(*env_map_core[index].val)[i].set = true;
++			(*map[index].val)[i].val = val;
++			(*map[index].val)[i].set = true;
+ 		}
+ 	}
+ 
+@@ -253,33 +268,33 @@ static int env_validate_common(u32 index, const struct hsdk_env_map_common *map)
+ 	return 0;
+ }
+ 
+-static int env_validate_core(u32 index)
++static int env_validate_core(u32 index, const struct hsdk_env_map_core *map)
+ {
+ 	u32 i;
+ 	u32 value;
+ 	bool set;
+-	bool mandatory = env_map_core[index].mandatory;
++	bool mandatory = map[index].mandatory;
+ 	u32 min, max;
+ 
+ 	for (i = 0; i < NR_CPUS; i++) {
+-		set = (*env_map_core[index].val)[i].set;
+-		value = (*env_map_core[index].val)[i].val;
++		set = (*map[index].val)[i].set;
++		value = (*map[index].val)[i].val;
+ 
+ 		/* Check if environment is mandatory */
+-		if (is_cpu_used(i) && !(mandatory && set)) {
++		if (is_cpu_used(i) && mandatory && !set) {
+ 			pr_err("CPU %u is used, but \'%s_%u\' is not defined\n",
+-				i, env_map_core[index].env_name, i);
++				i, map[index].env_name, i);
+ 
+ 			return -EINVAL;
+ 		}
+ 
+-		min = env_map_core[index].min[i];
+-		max = env_map_core[index].max[i];
++		min = map[index].min[i];
++		max = map[index].max[i];
+ 
+ 		/* Check environment boundary */
+ 		if (set && (value < min || value > max)) {
+ 			pr_err("Variable \'%s_%u\' must be between %#x and %#x\n",
+-				env_map_core[index].env_name, i, min, max);
++				map[index].env_name, i, min, max);
+ 
+ 			return -EINVAL;
+ 		}
+@@ -351,19 +366,24 @@ static int env_read_validate_common(const struct hsdk_env_map_common *map)
+ 	return 0;
+ }
+ 
+-static int env_read_validate_core(void)
++static int env_read_validate_core(const struct hsdk_env_map_core *map)
+ {
+ 	u32 i;
+ 	int ret;
+ 
++	/* Cleanup env struct first */
++	for (i = 0; env_map_core[i].env_name; i++) {
++		env_clear_core(i, map);
++	}
++
+ 	for (i = 0; env_map_core[i].env_name; i++) {
+-		ret = env_read_core(i);
++		ret = env_read_core(i, map);
+ 		if (ret)
+ 			return ret;
+ 	}
+ 
+ 	for (i = 0; env_map_core[i].env_name; i++) {
+-		ret = env_validate_core(i);
++		ret = env_validate_core(i, map);
+ 		if (ret)
+ 			return ret;
+ 	}
+@@ -371,15 +391,16 @@ static int env_read_validate_core(void)
+ 	return 0;
+ }
+ 
+-static int env_process_and_validate(void)
++static int env_process_and_validate(const struct hsdk_env_map_common *common,
++				    const struct hsdk_env_map_core *core)
+ {
+ 	int ret;
+ 
+-	ret = env_read_validate_common(env_map_common);
++	ret = env_read_validate_common(common);
+ 	if (ret)
+ 		return ret;
+ 
+-	ret = env_read_validate_core();
++	ret = env_read_validate_core(core);
+ 	if (ret)
+ 		return ret;
+ 
+@@ -393,8 +414,43 @@ static int env_process_and_validate(void)
+ /* Bit values in DC_CTRL */
+ #define DC_CTRL_CACHE_DISABLE	(1 << 0)
+ #define DC_CTRL_INV_MODE_FLUSH	(1 << 6)
++#define DC_CTRL_FLUSH_STATUS	(1 << 8)
+ #define APT_SHIFT		28
+ 
++/* ********************* LOCAL CACHE: START ********************* */
++static void smp_local_invalidate_icache_l1_all(void)
++{
++	write_aux_reg(ARC_AUX_IC_IVIC, 1);
++	read_aux_reg(ARC_AUX_IC_CTRL);	/* blocks */
++}
++
++static void smp_local_invalidate_dcache_l1_all(void)
++{
++	unsigned int reg;
++
++	/*
++	 * IM is set by default and implies Flush-n-inv
++	 * Clear it here for vanilla inv
++	 */
++	reg = read_aux_reg(ARC_AUX_DC_CTRL);
++	write_aux_reg(ARC_AUX_DC_CTRL, reg & ~DC_CTRL_INV_MODE_FLUSH);
++
++	write_aux_reg(ARC_AUX_DC_IVDC, 0x1);
++
++	/* Switch back to default Invalidate mode */
++	write_aux_reg(ARC_AUX_DC_CTRL, reg | DC_CTRL_INV_MODE_FLUSH);
++}
++
++static void smp_local_flush_dcache_l1_all(void)
++{
++	write_aux_reg(ARC_AUX_DC_FLSH, 0x1);
++
++	/* flush / flush-n-inv both wait */
++	while (read_aux_reg(ARC_AUX_DC_CTRL) & DC_CTRL_FLUSH_STATUS);
++}
++
++/* ********************* LOCAL CACHE: END   ********************* */
++
+ // TODO: add xCCM runtime check
+ static void smp_init_slave_cpu_func(u32 core)
+ {
+@@ -425,19 +481,22 @@ static void smp_init_slave_cpu_func(u32 core)
+ 	}
+ }
+ 
+-static void init_master_nvlim(void)
++static void init_claster_nvlim(void)
+ {
+ 	u32 val = env_common.nvlim.val << APT_SHIFT;
+ 
+ 	flush_dcache_all();
+ 	write_aux_reg(ARC_AUX_NON_VOLATILE_LIMIT, val);
+ 	write_aux_reg(AUX_AUX_CACHE_LIMIT, val);
++	invalidate_dcache_all();
+ }
+ 
+ // TODO: !! add my own implementation of flush_dcache_all, invalidate_icache_all
+ // as current implementations depends on CONFIG_SYS_DCACHE_OFF and
+ // CONFIG_SYS_ICACHE_OFF
+ 
++/* TODO: use generic status functions */
++
+ static void init_master_icache(void)
+ {
+ 	unsigned int r;
+@@ -576,6 +635,13 @@ __attribute__((naked, noreturn, flatten)) noinline void hsdk_core_init_f(void)
+ 	__builtin_arc_nop();
+ 	__builtin_arc_nop();
+ 
++	/* get the updated entry - invalidate L1i$ */
++	__l1_ic_invalidate_all();
++	__l1_dc_invalidate_all();
++
++//	smp_local_invalidate_icache_l1_all();
++//	smp_local_invalidate_dcache_l1_all();
++
+ 	/* Run our program */
+ 	((void (*)(void))(env_core.entry[CPU_ID_GET()].val))();
+ 
+@@ -584,9 +650,9 @@ __attribute__((naked, noreturn, flatten)) noinline void hsdk_core_init_f(void)
+ 		halt_this_cpu();
+ }
+ 
+-static void do_init_slave_cpu(u32 cpu_id)
++noinline static void do_init_slave_cpu(u32 cpu_id)
+ {
+-	u32 timeout = 50000;
++	u32 timeout = 5000;
+ 
+ 	data_flag = 0;
+ 
+@@ -599,21 +665,32 @@ static void do_init_slave_cpu(u32 cpu_id)
+ 	debug("CPU %u: stack pool base: %p\n", cpu_id, slave_stack);
+ 	smp_set_core_boot_addr((unsigned long)hsdk_core_init_f, -1);
+ 
+-	/* Make sure other cores see written value in memory */
++	/*
++	 * Slave CPUs may start with disabled caches, so
++	 * make sure other cores see written value in memory - flush L1, L2
++	 */
+ 	flush_dcache_all();
+ 
+ 	smp_kick_cpu_x(cpu_id);
+ 
+-	debug("CPU %u: FLAG0: %x\n", cpu_id, data_flag);
+-	while (!data_flag && timeout)
++	debug("CPU %u: FLAG0: %x [before timeout]\n", cpu_id, data_flag);
++
++	/* TODO: add dcache invalidation here */
++	while (!data_flag && timeout) {
+ 		timeout--;
++		mdelay(10);
++		/* we need L1d$ invalidation here, if we use slave CPUs with
++		 * disabled L1d$, as we configure master CPU caches later.
++		 * (master CPU L1d$ is possibly enabled here) */
++		__l1_dc_invalidate_all(0x1);
++	}
+ 
+ 	/* We need to panic here as there is no option to halt slave cpu
+ 	 * (or check that slave cpu is halted) */
+ 	if (!timeout)
+ 		pr_err("CPU %u is not responding after init!\n", cpu_id);
+ 
+-	debug("CPU %u: FLAG1: %x\n", cpu_id, data_flag);
++	debug("CPU %u: FLAG1: %x [after timeout]\n", cpu_id, data_flag);
+ }
+ 
+ static void do_init_slave_cpus(void)
+@@ -782,7 +859,7 @@ static void do_init_claster(void)
+ {
+ 	/* A multi-core ARC HS configuration always includes only one
+ 	 * ARC_AUX_NON_VOLATILE_LIMIT register, which is shared by all the cores. */
+-	init_master_nvlim();
++	init_claster_nvlim();
+ 
+ 	init_memory_bridge();
+ }
+@@ -799,7 +876,7 @@ static int check_master_cpu_id(void)
+ 	return -ENOENT;
+ }
+ 
+-static int prepare_cpus(u32 *cpu_start_reg)
++static int prepare_cpus(void)
+ {
+ 	u32 i;
+ 	int ret;
+@@ -808,7 +885,7 @@ static int prepare_cpus(u32 *cpu_start_reg)
+ 	if (ret)
+ 		return ret;
+ 
+-	ret = env_process_and_validate();
++	ret = env_process_and_validate(env_map_common, env_map_core);
+ 	if (ret)
+ 		return ret;
+ 
+@@ -820,13 +897,10 @@ static int prepare_cpus(u32 *cpu_start_reg)
+ 
+ 	do_init_slave_cpus();
+ 
+-	do_init_claster();
+-
+-	/* Prepare CREG_CPU_START for kicking chosen CPUs */
+-	*cpu_start_reg = prepare_cpu_ctart_reg();
+-
+ 	do_init_master_cpu();
+ 
++	do_init_claster();
++
+ 	return 0;
+ }
+ 
+@@ -864,7 +938,7 @@ int board_prep_linux(bootm_headers_t *images)
+ {
+ 	int ret;
+ 
+-	ret = env_read_validate_common(env_map_bootm);
++	ret = env_read_validate_common(env_map_mask);
+ 	if (ret)
+ 		return ret;
+ 
+@@ -882,30 +956,39 @@ int board_prep_linux(bootm_headers_t *images)
+ void board_jump_and_run(ulong entry, int zero, int arch, uint params)
+ {
+ 	void (*kernel_entry)(int zero, int arch, uint params);
+-	u32 cpu_start_reg;
++	u32 cpu_start_reg, i;
+ 
+ 	kernel_entry = (void (*)(int, int, uint))entry;
+ 
+ 	/* Prepare CREG_CPU_START for kicking chosen CPUs */
+ 	cpu_start_reg = prepare_cpu_ctart_reg();
+ 
++	/* In case of run without hsdk_init */
+ 	smp_set_core_boot_addr(entry, -1);
+ 
++	/* In case of run with hsdk_init */
++	for (i = 0; i < NR_CPUS; i++) {
++		env_core.entry[i].val = entry;
++		env_core.entry[i].set = true;
++	}
++
++	/* Entry goes to slave cpu icache so we need to flush master cpu dcache
++	 * as there is no coherency between icache and dcache */
++	flush_dcache_all();
++
+ 	/* Kick chosen slave CPUs */
+ 	writel(cpu_start_reg, (void __iomem *)CREG_CPU_START);
+ 
+-	if (env_common.core_mask.val & BIT(0))
++	if (is_cpu_used(0))
+ 		kernel_entry(zero, arch, params);
+ }
+ 
+ static int hsdk_go_prepare_and_run(void)
+ {
+-	int ret;
+ 	u32 reg;
+ 
+-	ret = prepare_cpus(&reg);
+-	if (ret)
+-		return ret;
++	/* Prepare CREG_CPU_START for kicking chosen CPUs */
++	reg = prepare_cpu_ctart_reg();
+ 
+ 	if (env_common.halt_on_boot)
+ 		printf("CPU will halt before application start, start application with debugger.\n");
+@@ -930,6 +1013,14 @@ static int do_hsdk_go(cmd_tbl_t *cmdtp, int flag, int argc, char * const argv[])
+ 		}
+ 	}
+ 
++	ret = check_master_cpu_id();
++	if (ret)
++		return ret;
++
++	ret = env_process_and_validate(env_map_mask, env_map_go);
++	if (ret)
++		return ret;
++
+ 	ret = hsdk_go_prepare_and_run();
+ 
+ 	return ret ? CMD_RET_FAILURE : CMD_RET_SUCCESS;
+@@ -942,6 +1033,33 @@ U_BOOT_CMD(
+ 	"hsdk_go halt - Boot stand-alone application on HSDK, halt CPU just before application run\n"
+ );
+ 
++static int do_hsdk_init(cmd_tbl_t *cmdtp, int flag, int argc, char * const argv[])
++{
++	static bool done = false;
++	int ret;
++
++	/* TODO: delete after release */
++	printf("HSDK: hsdk_init version: %s\n", HSDKGO_VERSION);
++
++	/* hsdk_init can be run only once */
++	if (done) {
++		printf("HSDK HW is already initialized!\n");
++		return CMD_RET_FAILURE;
++	}
++
++	ret = prepare_cpus();
++	if (!ret)
++		done = true;
++
++	return ret ? CMD_RET_FAILURE : CMD_RET_SUCCESS;
++}
++
++U_BOOT_CMD(
++	hsdk_init, 1, 0, do_hsdk_init,
++	"Synopsys HSDK specific command",
++	"- Init HSDK HW\n"
++);
++
+ static int hsdk_read_args_search(const struct hsdk_env_map_common *map, int argc, char * const argv[])
+ {
+ 	int i;
+@@ -1050,6 +1168,7 @@ static int do_hsdk_clock_get(cmd_tbl_t *cmdtp, int flag, int argc, char * const
+ 	int ret = 0;
+ 	ulong rate;
+ 
++	/* TODO: get rid of ret */
+ 	ret = soc_clk_ctl("cpu-clk", &rate, CLK_GET);
+ 	if (ret)
+ 		return CMD_RET_FAILURE;
+@@ -1087,13 +1206,24 @@ static int do_hsdk_clock_print(cmd_tbl_t *cmdtp, int flag, int argc, char * cons
+ 	soc_clk_ctl("sys-axi", NULL, CLK_PRINT);
+ 	soc_clk_ctl("ddr-clk", NULL, CLK_PRINT);
+ 
+-	/* Other sys clocks */
++	return CMD_RET_SUCCESS;
++}
++
++static int do_hsdk_clock_print_all(cmd_tbl_t *cmdtp, int flag, int argc, char * const argv[])
++{
++	/* CPU clock domain */
++	soc_clk_ctl("cpu-pll", NULL, CLK_PRINT);
++	soc_clk_ctl("cpu-clk", NULL, CLK_PRINT);
++	printf("\n");
++
++	/* SYS clock domain */
++	soc_clk_ctl("sys-pll", NULL, CLK_PRINT);
+ 	soc_clk_ctl("sys-apb", NULL, CLK_PRINT);
+-//	soc_clk_ctl("sys-axi", NULL, CLK_PRINT);
++	soc_clk_ctl("sys-axi", NULL, CLK_PRINT);
+ 	soc_clk_ctl("sys-eth", NULL, CLK_PRINT);
+ 	soc_clk_ctl("sys-usb", NULL, CLK_PRINT);
+ 	soc_clk_ctl("sys-sdio", NULL, CLK_PRINT);
+-	soc_clk_ctl("sys-hdmi", NULL, CLK_PRINT);
++/*	soc_clk_ctl("sys-hdmi", NULL, CLK_PRINT); */
+ 	soc_clk_ctl("sys-gfx-core", NULL, CLK_PRINT);
+ 	soc_clk_ctl("sys-gfx-dma", NULL, CLK_PRINT);
+ 	soc_clk_ctl("sys-gfx-cfg", NULL, CLK_PRINT);
+@@ -1102,16 +1232,25 @@ static int do_hsdk_clock_print(cmd_tbl_t *cmdtp, int flag, int argc, char * cons
+ 	soc_clk_ctl("sys-sdio-ref", NULL, CLK_PRINT);
+ 	soc_clk_ctl("sys-spi", NULL, CLK_PRINT);
+ 	soc_clk_ctl("sys-i2c", NULL, CLK_PRINT);
+-	soc_clk_ctl("sys-ebi", NULL, CLK_PRINT);
++/*	soc_clk_ctl("sys-ebi", NULL, CLK_PRINT); */
+ 	soc_clk_ctl("sys-uart", NULL, CLK_PRINT);
++	printf("\n");
++
++	/* DDR clock domain */
++	soc_clk_ctl("ddr-clk", NULL, CLK_PRINT);
++	printf("\n");
+ 
+-	/* Other hdmi clocks */
++	/* HDMI clock domain */
++/*	soc_clk_ctl("hdmi-pll", NULL, CLK_PRINT);
+ 	soc_clk_ctl("hdmi-clk", NULL, CLK_PRINT);
++	printf("\n"); */
+ 
+-	/* Other pll clocks */
+-	soc_clk_ctl("hdmi-pll", NULL, CLK_PRINT);
++	/* TUN clock domain */
+ 	soc_clk_ctl("tun-pll", NULL, CLK_PRINT);
+-	soc_clk_ctl("sys-pll", NULL, CLK_PRINT);
++	soc_clk_ctl("tun-clk", NULL, CLK_PRINT);
++	soc_clk_ctl("rom-clk", NULL, CLK_PRINT);
++	soc_clk_ctl("pwm-clk", NULL, CLK_PRINT);
++	printf("\n");
+ 
+ 	return CMD_RET_SUCCESS;
+ }
+@@ -1120,6 +1259,7 @@ cmd_tbl_t cmd_hsdk_clock[] = {
+ 	U_BOOT_CMD_MKENT(set, 3, 0, do_hsdk_clock_set, "", ""),
+ 	U_BOOT_CMD_MKENT(get, 3, 0, do_hsdk_clock_get, "", ""),
+ 	U_BOOT_CMD_MKENT(print, 4, 0, do_hsdk_clock_print, "", ""),
++	U_BOOT_CMD_MKENT(print_all, 4, 0, do_hsdk_clock_print_all, "", ""),
+ };
+ 
+ static int do_hsdk_clock(cmd_tbl_t *cmdtp, int flag, int argc, char * const argv[])
+@@ -1145,5 +1285,6 @@ U_BOOT_CMD(
+ 	"Synopsys HSDK specific clock command",
+ 	"set   - Set clock to values specified in environment / command line arguments\n"
+ 	"hsdk_clock get   - Save clock values to environment\n"
+-	"hsdk_clock print - Print clock values to console\n"
++	"hsdk_clock print - Print main clock values to console\n"
++	"hsdk_clock print_all - Print all clock values to console\n"
+ );
+-- 
+2.11.0
+

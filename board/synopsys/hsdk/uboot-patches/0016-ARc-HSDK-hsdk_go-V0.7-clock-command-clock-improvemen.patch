@@ -1,0 +1,875 @@
+From 7bb75b85e0b31f62bdcfb351d2e7ee357dd95daa Mon Sep 17 00:00:00 2001
+From: Eugeniy Paltsev <Eugeniy.Paltsev@synopsys.com>
+Date: Sat, 9 Dec 2017 20:25:59 +0300
+Subject: [PATCH 16/46] ARc: HSDK: hsdk_go V0.7, clock command, clock
+ improvements
+
+Signed-off-by: Eugeniy Paltsev <Eugeniy.Paltsev@synopsys.com>
+---
+ board/synopsys/hsdk/hsdk-cmd.c | 616 +++++++++++++++++++++++++++++------------
+ 1 file changed, 437 insertions(+), 179 deletions(-)
+
+diff --git a/board/synopsys/hsdk/hsdk-cmd.c b/board/synopsys/hsdk/hsdk-cmd.c
+index 32c622fd6b..1fad17adf9 100644
+--- a/board/synopsys/hsdk/hsdk-cmd.c
++++ b/board/synopsys/hsdk/hsdk-cmd.c
+@@ -14,20 +14,33 @@
+ 	#error "hsdk_go will not work with BIG endian CPU"
+ #endif
+ 
+-#define HSDKGO_VERSION	"0.6"
+-
+-#define HZ_IN_MHZ	1000000
++#define HSDKGO_VERSION	"0.7"
+ 
+ #define ceil(x, y) ({ ulong __x = (x), __y = (y); (__x + __y - 1) / __y; })
+ 
++/* TODO: move to common config */
+ #define NR_CPUS		4
+ #define MASTER_CPU	0
+ #define MAX_CMD_LEN	25
++#define HZ_IN_MHZ	1000000
+ 
+ #define NO_CCM		0x10
+ 
++enum clk_ctl {
++	CLK_SET		= BIT(0), /* set frequency */
++	CLK_GET		= BIT(1), /* get frequency */
++	CLK_ON		= BIT(2), /* enable clock */
++	CLK_OFF		= BIT(3), /* disable clock */
++	CLK_PRINT	= BIT(4)  /* print frequency */
++};
++
+ void smp_set_core_boot_addr(unsigned long addr, int corenr);
+ 
++enum env_type {
++	ENV_DEC,
++	ENV_HEX
++};
++
+ typedef struct {
+ 	u32 val;
+ 	bool set;
+@@ -52,7 +65,8 @@ struct hsdk_env_common_ctl {
+ };
+ 
+ struct hsdk_env_map_common {
+-	const char * const env_name;
++	const char *const env_name;
++	enum env_type type;
+ 	bool mandatory;
+ 	u32 min;
+ 	u32 max;
+@@ -60,7 +74,8 @@ struct hsdk_env_map_common {
+ };
+ 
+ struct hsdk_env_map_core {
+-	const char * const env_name;
++	const char *const env_name;
++	enum env_type type;
+ 	bool mandatory;
+ 	u32 min[NR_CPUS];
+ 	u32 max[NR_CPUS];
+@@ -73,9 +88,10 @@ static u32 slave_stack[256 * NR_CPUS] __attribute__((aligned(4)));
+ static struct hsdk_env_common_ctl env_common = {};
+ static struct hsdk_env_core_ctl env_core = {};
+ 
+-int soc_clk_ctl(const char *name, ulong *rate, bool set)
++int soc_clk_ctl(const char *name, ulong *rate, enum clk_ctl ctl)
+ {
+ 	int ret;
++	ulong priv_rate;
+ 	struct clk clk;
+ 
+ 	/* Dummy fmeas device, just to be able to use standard clk_* api funcs */
+@@ -90,21 +106,39 @@ int soc_clk_ctl(const char *name, ulong *rate, bool set)
+ 		return ret;
+ 	}
+ 
+-	ret = clk_enable(&clk);
+-	if (ret && ret != -ENOSYS && ret != -ENOTSUPP)
+-		return ret;
++	if (ctl & CLK_ON) {
++		ret = clk_enable(&clk);
++		if (ret && ret != -ENOSYS && ret != -ENOTSUPP)
++			return ret;
++	}
+ 
+-	if (set) {
++	if ((ctl & CLK_SET) && rate != NULL) {
+ 		ret = clk_set_rate(&clk, *rate);
+ 		if (ret)
+ 			return ret;
+ 	}
+ 
+-	*rate = clk_get_rate(&clk);
++	if (ctl & CLK_OFF) {
++		ret = clk_disable(&clk);
++		if (ret) {
++			pr_err("clock '%s' can't disable, err=%d\n", name, ret);
++			return ret;
++		}
++	}
++
++	priv_rate = clk_get_rate(&clk);
++
++	if ((ctl & CLK_GET) && rate != NULL) {
++		*rate = priv_rate;
++	}
+ 
+ 	clk_free(&clk);
+ 
+-	debug("HSDK: clock '%s' rate %lu MHz\n", name, ceil(*rate, HZ_IN_MHZ));
++	if (ctl & CLK_PRINT) {
++		printf("HSDK: clock '%s' rate %lu MHz\n", name, ceil(priv_rate, HZ_IN_MHZ));
++	} else {
++		debug("HSDK: clock '%s' rate %lu MHz\n", name, ceil(priv_rate, HZ_IN_MHZ));
++	}
+ 
+ 	return 0;
+ }
+@@ -115,33 +149,53 @@ static bool is_cpu_used(u32 cpu_id)
+ }
+ 
+ static const struct hsdk_env_map_common env_map_common[] = {
+-	{ "core_mask",		true,	0x1, 0xF,	&env_common.core_mask },
+-	{ "cpu_freq",		false,	100, 1000,	&env_common.cpu_freq },
+-	{ "axi_freq",		false,	200, 800,	&env_common.axi_freq },
+-	{ "tun_freq",		false,	0, 150,		&env_common.tun_freq },
+-	{ "non_volatile_limit", true,	0, 0xF, 	&env_common.nvlim },
+-	{ "icache_ena",		true,	0, 1,		&env_common.icache },
+-	{ "dcache_ena",		true,	0, 1,		&env_common.dcache },
++	{ "core_mask",		ENV_HEX, true,	0x1, 0xF,	&env_common.core_mask },
++	{ "non_volatile_limit", ENV_HEX, true,	0, 0xF, 	&env_common.nvlim },
++	{ "icache_ena",		ENV_HEX, true,	0, 1,		&env_common.icache },
++	{ "dcache_ena",		ENV_HEX, true,	0, 1,		&env_common.dcache },
++	{}
++};
++
++static const struct hsdk_env_map_common env_map_clock[] = {
++	{ "cpu_freq",		ENV_DEC, false,	100, 1000,	&env_common.cpu_freq },
++	{ "axi_freq",		ENV_DEC, false,	200, 800,	&env_common.axi_freq },
++	{ "tun_freq",		ENV_DEC, false,	0, 150,		&env_common.tun_freq },
+ 	{}
+ };
+ 
+ static const struct hsdk_env_map_core env_map_core[] = {
+-	{ "core_entry",	true,	{0, 0, 0, 0}, {U32_MAX, U32_MAX, U32_MAX, U32_MAX},	&env_core.entry },
+-	{ "core_iccm",	true,	{NO_CCM, 0, NO_CCM, 0}, {NO_CCM, 0xF, NO_CCM, 0xF},	&env_core.iccm },
+-	{ "core_dccm",	true,	{NO_CCM, 0, NO_CCM, 0}, {NO_CCM, 0xF, NO_CCM, 0xF},	&env_core.dccm },
++	{ "core_entry",	ENV_HEX, true,	{0, 0, 0, 0}, {U32_MAX, U32_MAX, U32_MAX, U32_MAX},	&env_core.entry },
++	{ "core_iccm",	ENV_HEX, true,	{NO_CCM, 0, NO_CCM, 0}, {NO_CCM, 0xF, NO_CCM, 0xF},	&env_core.iccm },
++	{ "core_dccm",	ENV_HEX, true,	{NO_CCM, 0, NO_CCM, 0}, {NO_CCM, 0xF, NO_CCM, 0xF},	&env_core.dccm },
++	{}
++};
++
++static const struct hsdk_env_map_common env_map_bootm[] = {
++	{ "core_mask",		ENV_HEX, false,	0x1, 0xF,	&env_common.core_mask },
+ 	{}
+ };
+ 
+-static int env_read_common(u32 index)
++static void env_clear_common(u32 index, const struct hsdk_env_map_common *map)
++{
++	map[index].val->val = 0;
++	map[index].val->set = false;
++}
++
++static int env_read_common(u32 index, const struct hsdk_env_map_common *map)
+ {
+ 	u32 val;
+ 
+-	if (!env_get_yesno(env_map_common[index].env_name)) {
+-		val = (u32)env_get_hex(env_map_common[index].env_name, 0);
+-		debug("ENV: %s = %#x\n", env_map_common[index].env_name, val);
++	if (!env_get_yesno(map[index].env_name)) {
++		if (map[index].type == ENV_HEX) {
++			val = (u32)env_get_hex(map[index].env_name, 0);
++			debug("ENV: %s: = %#x\n", map[index].env_name, val);
++		} else {
++			val = (u32)env_get_ulong(map[index].env_name, 10, 0);
++			debug("ENV: %s: = %d\n", map[index].env_name, val);
++		}
+ 
+-		env_map_common[index].val->val = val;
+-		env_map_common[index].val->set = true;
++		map[index].val->val = val;
++		map[index].val->set = true;
+ 	}
+ 
+ 	return 0;
+@@ -156,8 +210,13 @@ static int env_read_core(u32 index)
+ 	for (i = 0; i < NR_CPUS; i++) {
+ 		sprintf(comand, "%s_%u", env_map_core[index].env_name, i);
+ 		if (!env_get_yesno(comand)) {
+-			val = (u32)env_get_hex(comand, 0);
+-			debug("ENV: %s: = %#x\n", comand, val);
++			if (env_map_core[index].type == ENV_HEX) {
++				val = (u32)env_get_hex(comand, 0);
++				debug("ENV: %s: = %#x\n", comand, val);
++			} else {
++				val = (u32)env_get_ulong(comand, 10, 0);
++				debug("ENV: %s: = %d\n", comand, val);
++			}
+ 
+ 			(*env_map_core[index].val)[i].val = val;
+ 			(*env_map_core[index].val)[i].set = true;
+@@ -168,17 +227,17 @@ static int env_read_core(u32 index)
+ }
+ 
+ /* environment common verification */
+-static int env_validate_common(u32 index)
++static int env_validate_common(u32 index, const struct hsdk_env_map_common *map)
+ {
+-	u32 value = env_map_common[index].val->val;
+-	bool set = env_map_common[index].val->set;
+-	u32 min = env_map_common[index].min;
+-	u32 max = env_map_common[index].max;
++	u32 value = map[index].val->val;
++	bool set = map[index].val->set;
++	u32 min = map[index].min;
++	u32 max = map[index].max;
+ 
+ 	/* Check if environment is mandatory */
+-	if (env_map_common[index].mandatory && !set) {
++	if (map[index].mandatory && !set) {
+ 		pr_err("Variable \'%s\' is mandatory, but it is not defined\n",
+-			env_map_common[index].env_name);
++			map[index].env_name);
+ 
+ 		return -EINVAL;
+ 	}
+@@ -186,7 +245,7 @@ static int env_validate_common(u32 index)
+ 	/* Check environment boundary */
+ 	if (set && (value < min || value > max)) {
+ 		pr_err("Variable \'%s\' must be between %#x and %#x\n",
+-			env_map_common[index].env_name, min, max);
++			map[index].env_name, min, max);
+ 
+ 		return -EINVAL;
+ 	}
+@@ -229,27 +288,76 @@ static int env_validate_core(u32 index)
+ 	return 0;
+ }
+ 
+-static int env_process_and_validate(void)
++static void envs_cleanup_common(const struct hsdk_env_map_common *map)
++{
++	u32 i;
++
++	/* Cleanup env struct first */
++	for (i = 0; map[i].env_name; i++) {
++		env_clear_common(i, map);
++	}
++}
++
++static int envs_read_common(const struct hsdk_env_map_common *map)
+ {
+ 	u32 i;
+ 	int ret;
+ 
+-	/* Generic read */
+-	for (i = 0; env_map_common[i].env_name; i++) {
+-		ret = env_read_common(i);
++	for (i = 0; map[i].env_name; i++) {
++		ret = env_read_common(i, map);
+ 		if (ret)
+ 			return ret;
+ 	}
+ 
+-	for (i = 0; env_map_core[i].env_name; i++) {
+-		ret = env_read_core(i);
++	return 0;
++}
++
++static int envs_validate_common(const struct hsdk_env_map_common *map)
++{
++	u32 i;
++	int ret;
++
++	for (i = 0; map[i].env_name; i++) {
++		ret = env_validate_common(i, map);
+ 		if (ret)
+ 			return ret;
+ 	}
+ 
+-	/* Generic validate */
+-	for (i = 0; env_map_common[i].env_name; i++) {
+-		ret = env_validate_common(i);
++	return 0;
++}
++
++static int env_read_validate_common(const struct hsdk_env_map_common *map)
++{
++	u32 i;
++	int ret;
++
++	/* Cleanup env struct first */
++	for (i = 0; map[i].env_name; i++) {
++		env_clear_common(i, map);
++	}
++
++	for (i = 0; map[i].env_name; i++) {
++		ret = env_read_common(i, map);
++		if (ret)
++			return ret;
++	}
++
++	for (i = 0; map[i].env_name; i++) {
++		ret = env_validate_common(i, map);
++		if (ret)
++			return ret;
++	}
++
++	return 0;
++}
++
++static int env_read_validate_core(void)
++{
++	u32 i;
++	int ret;
++
++	for (i = 0; env_map_core[i].env_name; i++) {
++		ret = env_read_core(i);
+ 		if (ret)
+ 			return ret;
+ 	}
+@@ -263,14 +371,29 @@ static int env_process_and_validate(void)
+ 	return 0;
+ }
+ 
+-#define APT_SHIFT		28
++static int env_process_and_validate(void)
++{
++	int ret;
++
++	ret = env_read_validate_common(env_map_common);
++	if (ret)
++		return ret;
++
++	ret = env_read_validate_core();
++	if (ret)
++		return ret;
++
++	return 0;
++}
++
++/* TODO: move to explicit external cache header */
+ 
+ /* Bit values in IC_CTRL */
+ #define IC_CTRL_CACHE_DISABLE	(1 << 0)
+-
+ /* Bit values in DC_CTRL */
+ #define DC_CTRL_CACHE_DISABLE	(1 << 0)
+ #define DC_CTRL_INV_MODE_FLUSH	(1 << 6)
++#define APT_SHIFT		28
+ 
+ // TODO: add xCCM runtime check
+ static void smp_init_slave_cpu_func(u32 core)
+@@ -392,7 +515,7 @@ static int cleanup_before_go(void)
+ 	return 0;
+ }
+ 
+-static inline void this_cpu_halt(void)
++static inline void halt_this_cpu(void)
+ {
+ 	__builtin_arc_flag(1);
+ }
+@@ -447,7 +570,7 @@ __attribute__((naked, noreturn, flatten)) noinline void hsdk_core_init_f(void)
+ 	flush_dcache_all();
+ 
+ 	/* Halt the processor untill the master kick us again */
+-	this_cpu_halt();
++	halt_this_cpu();
+ 
+ 	__builtin_arc_nop();
+ 	__builtin_arc_nop();
+@@ -458,7 +581,7 @@ __attribute__((naked, noreturn, flatten)) noinline void hsdk_core_init_f(void)
+ 
+ 	/* Something went terribly wrong */
+ 	while (true)
+-		this_cpu_halt();
++		halt_this_cpu();
+ }
+ 
+ static void do_init_slave_cpu(u32 cpu_id)
+@@ -632,115 +755,27 @@ static void init_memory_bridge(void)
+ 
+ static void setup_clocks(void)
+ {
+-	ulong rate, tmp_rate;
++	ulong rate;
+ 
+ 	/* Setup CPU clock */
+ 	if (env_common.cpu_freq.set) {
+ 		rate = env_common.cpu_freq.val * HZ_IN_MHZ;
+-		soc_clk_ctl("cpu-pll", &rate, true); /* 100MHz - 1GHz is OK for PLL */
+-		soc_clk_ctl("cpu-clk", &rate, true); /* div factor = 1 */
++		soc_clk_ctl("cpu-clk", &rate, CLK_ON | CLK_SET);
+ 	}
+ 
+ 	/* Setup TUN clock */
+ 	if (env_common.tun_freq.set) {
+ 		rate = env_common.tun_freq.val * HZ_IN_MHZ;
+-		if (rate >= 100 * HZ_IN_MHZ) {
+-			/* 150 MHz : PLL - 150MHz; DIV = 1 */
+-			/* 125 MHz : PLL - 125MHz; DIV = 1 */
+-			/* 100 MHz : PLL - 100MHz; DIV = 1 */
+-			soc_clk_ctl("tun-pll", &rate, true); /* 100MHz - 150MHz is OK for PLL */
+-			soc_clk_ctl("tun-clk", &rate, true); /* div factor = 1 */
+-		} else if (rate > 0) {
+-			/* 75 MHz  : PLL - 150MHz; DIV = 2 */
+-			/* 50 MHz  : PLL - 150MHz; DIV = 3 */
+-			/* 25 MHz  : PLL - 150MHz; DIV = 6 */
+-			tmp_rate = 150 * HZ_IN_MHZ;
+-			soc_clk_ctl("tun-pll", &tmp_rate, true);
+-			soc_clk_ctl("tun-clk", &rate, true); /* div factor - autocalc */
+-		} else {
+-			/* 25 MHz  : PLL - DNC;    DIV = OFF */
+-			// TODO: add
+-		}
++		if (rate)
++			soc_clk_ctl("tun-clk", &rate, CLK_ON | CLK_SET);
++		else
++			soc_clk_ctl("tun-clk", NULL, CLK_OFF);
+ 	}
+ 
+ 	if (env_common.axi_freq.set) {
+ 		rate = env_common.axi_freq.val * HZ_IN_MHZ;
+-		/* firstly we need to increase SYS dividers factors to set
+-		 * 'safe' freq values */
+-		tmp_rate = 33333333;
+-		soc_clk_ctl("sys-apb", &tmp_rate, true);
+-		soc_clk_ctl("sys-axi", &tmp_rate, true);
+-		soc_clk_ctl("sys-eth", &tmp_rate, true);
+-		soc_clk_ctl("sys-usb", &tmp_rate, true);
+-		soc_clk_ctl("sys-sdio", &tmp_rate, true);
+-		soc_clk_ctl("sys-hdmi", &tmp_rate, true);
+-		soc_clk_ctl("sys-gfx-core", &tmp_rate, true);
+-		soc_clk_ctl("sys-gfx-dma", &tmp_rate, true);
+-		soc_clk_ctl("sys-gfx-cfg", &tmp_rate, true);
+-		soc_clk_ctl("sys-dmac-core", &tmp_rate, true);
+-		soc_clk_ctl("sys-dmac-cfg", &tmp_rate, true);
+-		soc_clk_ctl("sys-sdio-ref", &tmp_rate, true);
+-		soc_clk_ctl("sys-spi", &tmp_rate, true);
+-		soc_clk_ctl("sys-i2c", &tmp_rate, true);
+-		soc_clk_ctl("sys-uart", &tmp_rate, true);
+-		soc_clk_ctl("sys-ebi", &tmp_rate, true);
+-
+-		/* update (increase) PLL clock */
+-		if (rate == 800 * HZ_IN_MHZ) {
+-			tmp_rate = 800 * HZ_IN_MHZ;
+-			soc_clk_ctl("sys-pll", &tmp_rate, true);
+-			soc_clk_ctl("sys-axi", &tmp_rate, true);
+-		} else if (rate == 600 * HZ_IN_MHZ) {
+-			tmp_rate = 600 * HZ_IN_MHZ;
+-			soc_clk_ctl("sys-pll", &tmp_rate, true);
+-			soc_clk_ctl("sys-axi", &tmp_rate, true);
+-		} else if (rate <= 400 * HZ_IN_MHZ) {
+-			tmp_rate = 400 * HZ_IN_MHZ;
+-			soc_clk_ctl("sys-pll", &tmp_rate, true);
+-			soc_clk_ctl("sys-axi", &rate, true); /* div factor - autocalc */
+-		}
+-
+-		/* return SYS dividers factors to 'fast' freq values */
+-		tmp_rate = 200 * HZ_IN_MHZ;
+-		soc_clk_ctl("sys-apb", &tmp_rate, true);
+-		tmp_rate = 400 * HZ_IN_MHZ;
+-		soc_clk_ctl("sys-eth", &tmp_rate, true);
+-		soc_clk_ctl("sys-usb", &tmp_rate, true);
+-		soc_clk_ctl("sys-sdio", &tmp_rate, true);
+-		soc_clk_ctl("sys-hdmi", &tmp_rate, true);
+-		tmp_rate = 800 * HZ_IN_MHZ;
+-		soc_clk_ctl("sys-gfx-core", &tmp_rate, true);
+-		tmp_rate = 400 * HZ_IN_MHZ;
+-		soc_clk_ctl("sys-gfx-dma", &tmp_rate, true);
+-		tmp_rate = 200 * HZ_IN_MHZ;
+-		soc_clk_ctl("sys-gfx-cfg", &tmp_rate, true);
+-		tmp_rate = 400 * HZ_IN_MHZ;
+-		soc_clk_ctl("sys-dmac-core", &tmp_rate, true);
+-		tmp_rate = 200 * HZ_IN_MHZ;
+-		soc_clk_ctl("sys-dmac-cfg", &tmp_rate, true);
+-		tmp_rate = 100 * HZ_IN_MHZ;
+-		soc_clk_ctl("sys-sdio-ref", &tmp_rate, true);
+-		tmp_rate = 33333333;
+-		soc_clk_ctl("sys-spi", &tmp_rate, true);
+-		tmp_rate = 200 * HZ_IN_MHZ;
+-		soc_clk_ctl("sys-i2c", &tmp_rate, true);
+-		tmp_rate = 33333333;
+-		soc_clk_ctl("sys-uart", &tmp_rate, true);
+-		tmp_rate = 50 * HZ_IN_MHZ;
+-		soc_clk_ctl("sys-ebi", &tmp_rate, true);
+-	}
+-
+-	soc_clk_ctl("cpu-clk", &rate, false);
+-	printf("HSDK: clock '%s' rate %lu MHz\n", "cpu-clk", ceil(rate, HZ_IN_MHZ));
+-
+-	soc_clk_ctl("tun-clk", &rate, false);
+-	printf("HSDK: clock '%s' rate %lu MHz\n", "tun-clk", ceil(rate, HZ_IN_MHZ));
+-
+-	soc_clk_ctl("sys-axi", &rate, false);
+-	printf("HSDK: clock '%s' rate %lu MHz\n", "axi-clk", ceil(rate, HZ_IN_MHZ));
+-
+-	soc_clk_ctl("ddr-clk", &rate, false);
+-	printf("HSDK: clock '%s' rate %lu MHz\n", "ddr-clk", ceil(rate, HZ_IN_MHZ));
++		soc_clk_ctl("sys-axi", &rate, CLK_SET | CLK_ON);
++	}
+ }
+ 
+ static void do_init_claster(void)
+@@ -781,9 +816,9 @@ static int prepare_cpus(u32 *cpu_start_reg)
+ 		env_core.used[i] = is_cpu_used(i);
+ 	}
+ 
+-	do_init_slave_cpus();
++	printf("CPU start mask is %#x\n", env_common.core_mask.val);
+ 
+-	setup_clocks();
++	do_init_slave_cpus();
+ 
+ 	do_init_claster();
+ 
+@@ -801,72 +836,87 @@ static int hsdk_go_run(u32 cpu_start_reg)
+ 	cleanup_before_go();
+ 
+ 	if (env_common.halt_on_boot)
+-		this_cpu_halt();
++		halt_this_cpu();
+ 
+-	/* Kick chosen CPUs */
++	__builtin_arc_nop();
++	__builtin_arc_nop();
++	__builtin_arc_nop();
++
++	/* Kick chosen slave CPUs */
+ 	writel(cpu_start_reg, (void __iomem *)CREG_CPU_START);
+ 
+ 	if (env_core.used[MASTER_CPU])
+ 		((void (*)(void))(env_core.entry[MASTER_CPU].val))();
+ 	else
+-		this_cpu_halt();
++		halt_this_cpu();
+ 
+ 	pr_err("u-boot still runs on cpu [%ld]\n", CPU_ID_GET());
+ 
+ 	/* We will never return after executing our program if master cpu used
+ 	 * otherwise halt master cpu manually */
+ 	while (true)
+-		this_cpu_halt();
++		halt_this_cpu();
+ 
+ 	return 0;
+ }
+ 
+-static int bootm_run(u32 cpu_start_reg)
++int board_prep_linux(bootm_headers_t *images)
+ {
+-	debug("bootm cpumask: %#x\n", cpu_start_reg);
++	int ret;
+ 
+-	/* Cleanup caches, disable interrupts */
+-	cleanup_before_go();
++	ret = env_read_validate_common(env_map_bootm);
++	if (ret)
++		return ret;
+ 
+-	/* Kick chosen CPUs */
+-	writel(cpu_start_reg, (void __iomem *)CREG_CPU_START);
++	/* Rollback to default values */
++	if (!env_common.core_mask.set) {
++		env_common.core_mask.val = 0xF;
++		env_common.core_mask.set = true;
++	}
++
++	printf("CPU start mask is %#x\n", env_common.core_mask.val);
+ 
+ 	return 0;
+ }
+ 
+-static int hsdk_go_prepare_and_run(void)
++void board_jump_and_run(ulong entry, int zero, int arch, uint params)
+ {
+-	int ret;
+-	u32 reg;
++	void (*kernel_entry)(int zero, int arch, uint params);
++	u32 cpu_start_reg;
+ 
+-	ret = prepare_cpus(&reg);
+-	if (ret)
+-		return ret;
++	kernel_entry = (void (*)(int, int, uint))entry;
+ 
+-	return hsdk_go_run(reg);
++	/* Prepare CREG_CPU_START for kicking chosen CPUs */
++	cpu_start_reg = prepare_cpu_ctart_reg();
++
++	smp_set_core_boot_addr(entry, -1);
++
++	/* Kick chosen slave CPUs */
++	writel(cpu_start_reg, (void __iomem *)CREG_CPU_START);
++
++	if (env_common.core_mask.val & BIT(0))
++		kernel_entry(zero, arch, params);
+ }
+ 
+-int bootm_prepare_and_run(u32 entry)
++static int hsdk_go_prepare_and_run(void)
+ {
+ 	int ret;
+-	u32 i, reg;
+-	char comand[MAX_CMD_LEN];
+-
+-	/* override core entry env by value from image*/
+-	for (i = 0; i < NR_CPUS; i++) {
+-		sprintf(comand, "%s_%u", "core_entry", i);
+-		env_set_hex(comand, entry);
+-	}
++	u32 reg;
+ 
+ 	ret = prepare_cpus(&reg);
+ 	if (ret)
+ 		return ret;
+ 
+-	return bootm_run(reg);
++	if (env_common.halt_on_boot)
++		printf("CPU will halt before application start, start application with debugger.\n");
++
++	return hsdk_go_run(reg);
+ }
+ 
+ static int do_hsdk_go(cmd_tbl_t *cmdtp, int flag, int argc, char * const argv[])
+ {
++	int ret;
++
+ 	/* TODO: delete after release */
+ 	printf("HSDK: hsdk_go version: %s\n", HSDKGO_VERSION);
+ 
+@@ -876,11 +926,13 @@ static int do_hsdk_go(cmd_tbl_t *cmdtp, int flag, int argc, char * const argv[])
+ 		env_common.halt_on_boot = !strcmp(argv[1], "halt");
+ 		if (!env_common.halt_on_boot) {
+ 			pr_err("Unrecognised parameter: \'%s\'\n", argv[1]);
+-			return -EINVAL;
++			return CMD_RET_FAILURE;
+ 		}
+ 	}
+ 
+-	return hsdk_go_prepare_and_run();
++	ret = hsdk_go_prepare_and_run();
++
++	return ret ? CMD_RET_FAILURE : CMD_RET_SUCCESS;
+ }
+ 
+ U_BOOT_CMD(
+@@ -889,3 +941,209 @@ U_BOOT_CMD(
+ 	"     - Boot stand-alone application on HSDK\n"
+ 	"hsdk_go halt - Boot stand-alone application on HSDK, halt CPU just before application run\n"
+ );
++
++static int hsdk_read_args_search(const struct hsdk_env_map_common *map, int argc, char * const argv[])
++{
++	int i;
++
++	for (i = 0; map[i].env_name; i++) {
++		if (!strcmp(argv[0], map[i].env_name))
++			return i;
++	}
++
++	return -ENOENT;
++}
++
++static int arg_read_set(const struct hsdk_env_map_common *map, u32 i, int argc, char *const argv[])
++{
++	char *endp = argv[1];
++
++	map[i].val->set = true;
++
++	if (map[i].type == ENV_HEX)
++		map[i].val->val = simple_strtoul(argv[1], &endp, 16);
++	else
++		map[i].val->val = simple_strtoul(argv[1], &endp, 10);
++
++	if (*endp == '\0')
++		return 0;
++
++	pr_err("Unexpected argument '%s', can't parse\n", argv[1]);
++
++	map[i].val->set = false;
++
++	return -EINVAL;
++}
++
++static int hsdk_args_enumerate(const struct hsdk_env_map_common *map, int enum_by, int (*act)(const struct hsdk_env_map_common *, u32, int, char *const []), int argc, char * const argv[])
++{
++	u32 i;
++
++	if (argc % enum_by) {
++		pr_err("unexpected argument number: %d\n", argc);
++		return -EINVAL;
++	}
++
++	while (argc > 0) {
++		i = hsdk_read_args_search(map, argc, argv);
++
++//		printf("PAL: %s: found '%s' with index %d\n", __func__, map[i].env_name, i);
++
++		if (i < 0) {
++			pr_err("unknown arg: %s\n", argv[0]);
++			return -EINVAL;
++		}
++
++		if (act(map, i, argc, argv))
++			return -EINVAL;
++
++//		printf("PAL: %s: value.s '%s' == %#x\n", __func__, argv[1], map[i].val->val);
++
++		argc -= enum_by;
++		argv += enum_by;
++	}
++
++	return 0;
++}
++
++static int do_hsdk_clock_set(cmd_tbl_t *cmdtp, int flag, int argc, char * const argv[])
++{
++	int ret = 0;
++
++	/* Strip off leading subcommand argument */
++	argc--;
++	argv++;
++
++	envs_cleanup_common(env_map_clock);
++
++	if (!argc) {
++		printf("Set clocks to values specified in environment\n");
++		ret = envs_read_common(env_map_clock);
++	} else {
++		printf("Set clocks to values specified in args\n");
++		ret = hsdk_args_enumerate(env_map_clock, 2, arg_read_set, argc, argv);
++	}
++
++	if (ret)
++		return CMD_RET_FAILURE;
++
++	ret = envs_validate_common(env_map_clock);
++	if (ret)
++		return CMD_RET_FAILURE;
++
++	/* Setup clock tree HW */
++	setup_clocks();
++
++	return CMD_RET_SUCCESS;
++}
++
++int env_set_hexi(const char *varname, ulong value)
++{
++	char str[17];
++
++	sprintf(str, "%#lx", value);
++	return env_set(varname, str);
++}
++
++static int do_hsdk_clock_get(cmd_tbl_t *cmdtp, int flag, int argc, char * const argv[])
++{
++	int ret = 0;
++	ulong rate;
++
++	ret = soc_clk_ctl("cpu-clk", &rate, CLK_GET);
++	if (ret)
++		return CMD_RET_FAILURE;
++
++	ret = env_set_ulong("cpu_freq", ceil(rate, HZ_IN_MHZ));
++	if (ret)
++		return CMD_RET_FAILURE;
++
++	ret = soc_clk_ctl("tun-clk", &rate, CLK_GET);
++	if (ret)
++		return CMD_RET_FAILURE;
++
++	ret = env_set_ulong("tun_freq", ceil(rate, HZ_IN_MHZ));
++	if (ret)
++		return CMD_RET_FAILURE;
++
++	ret = soc_clk_ctl("sys-axi", &rate, CLK_GET);
++	if (ret)
++		return CMD_RET_FAILURE;
++
++	ret = env_set_ulong("axi_freq", ceil(rate, HZ_IN_MHZ));
++	if (ret)
++		return CMD_RET_FAILURE;
++
++	printf("Clock values are saved to environment\n");
++
++	return CMD_RET_SUCCESS;
++}
++
++static int do_hsdk_clock_print(cmd_tbl_t *cmdtp, int flag, int argc, char * const argv[])
++{
++	/* Main clocks */
++	soc_clk_ctl("cpu-clk", NULL, CLK_PRINT);
++	soc_clk_ctl("tun-clk", NULL, CLK_PRINT);
++	soc_clk_ctl("sys-axi", NULL, CLK_PRINT);
++	soc_clk_ctl("ddr-clk", NULL, CLK_PRINT);
++
++	/* Other sys clocks */
++	soc_clk_ctl("sys-apb", NULL, CLK_PRINT);
++//	soc_clk_ctl("sys-axi", NULL, CLK_PRINT);
++	soc_clk_ctl("sys-eth", NULL, CLK_PRINT);
++	soc_clk_ctl("sys-usb", NULL, CLK_PRINT);
++	soc_clk_ctl("sys-sdio", NULL, CLK_PRINT);
++	soc_clk_ctl("sys-hdmi", NULL, CLK_PRINT);
++	soc_clk_ctl("sys-gfx-core", NULL, CLK_PRINT);
++	soc_clk_ctl("sys-gfx-dma", NULL, CLK_PRINT);
++	soc_clk_ctl("sys-gfx-cfg", NULL, CLK_PRINT);
++	soc_clk_ctl("sys-dmac-core", NULL, CLK_PRINT);
++	soc_clk_ctl("sys-dmac-cfg", NULL, CLK_PRINT);
++	soc_clk_ctl("sys-sdio-ref", NULL, CLK_PRINT);
++	soc_clk_ctl("sys-spi", NULL, CLK_PRINT);
++	soc_clk_ctl("sys-i2c", NULL, CLK_PRINT);
++	soc_clk_ctl("sys-ebi", NULL, CLK_PRINT);
++	soc_clk_ctl("sys-uart", NULL, CLK_PRINT);
++
++	/* Other hdmi clocks */
++	soc_clk_ctl("hdmi-clk", NULL, CLK_PRINT);
++
++	/* Other pll clocks */
++	soc_clk_ctl("hdmi-pll", NULL, CLK_PRINT);
++	soc_clk_ctl("tun-pll", NULL, CLK_PRINT);
++	soc_clk_ctl("sys-pll", NULL, CLK_PRINT);
++
++	return CMD_RET_SUCCESS;
++}
++
++cmd_tbl_t cmd_hsdk_clock[] = {
++	U_BOOT_CMD_MKENT(set, 3, 0, do_hsdk_clock_set, "", ""),
++	U_BOOT_CMD_MKENT(get, 3, 0, do_hsdk_clock_get, "", ""),
++	U_BOOT_CMD_MKENT(print, 4, 0, do_hsdk_clock_print, "", ""),
++};
++
++static int do_hsdk_clock(cmd_tbl_t *cmdtp, int flag, int argc, char * const argv[])
++{
++	cmd_tbl_t *c;
++
++	if (argc < 2)
++		return CMD_RET_USAGE;
++
++	/* Strip off leading 'hsdk_clock' command argument */
++	argc--;
++	argv++;
++
++	c = find_cmd_tbl(argv[0], cmd_hsdk_clock, ARRAY_SIZE(cmd_hsdk_clock));
++	if (!c)
++		return CMD_RET_USAGE;
++
++	return c->cmd(cmdtp, flag, argc, argv);
++}
++
++U_BOOT_CMD(
++	hsdk_clock, CONFIG_SYS_MAXARGS, 0, do_hsdk_clock,
++	"Synopsys HSDK specific clock command",
++	"set   - Set clock to values specified in environment / command line arguments\n"
++	"hsdk_clock get   - Save clock values to environment\n"
++	"hsdk_clock print - Print clock values to console\n"
++);
+-- 
+2.11.0
+

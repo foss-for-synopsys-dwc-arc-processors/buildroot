@@ -1,0 +1,75 @@
+From 0b721c697e6a4866530e9440a79c028b35cdcf1b Mon Sep 17 00:00:00 2001
+From: Eugeniy Paltsev <Eugeniy.Paltsev@synopsys.com>
+Date: Fri, 10 Nov 2017 17:21:25 +0300
+Subject: [PATCH 44/46] SOCFPGA: clock manager: implement dw_spi_get_clk
+ function
+
+Implement dw_spi_get_clk function to override its weak
+implementation in designware_spi.c driver.
+
+We need this change to get rid of cm_get_spi_controller_clk_hz
+function and clock_manager.h include in designware_spi.c driver.
+
+Signed-off-by: Eugeniy Paltsev <Eugeniy.Paltsev@synopsys.com>
+---
+ arch/arm/mach-socfpga/clock_manager_arria10.c | 9 +++++++++
+ arch/arm/mach-socfpga/clock_manager_gen5.c    | 9 +++++++++
+ 2 files changed, 18 insertions(+)
+
+diff --git a/arch/arm/mach-socfpga/clock_manager_arria10.c b/arch/arm/mach-socfpga/clock_manager_arria10.c
+index 482b8543f4..623a266f80 100644
+--- a/arch/arm/mach-socfpga/clock_manager_arria10.c
++++ b/arch/arm/mach-socfpga/clock_manager_arria10.c
+@@ -7,6 +7,7 @@
+ #include <common.h>
+ #include <fdtdec.h>
+ #include <asm/io.h>
++#include <dm.h>
+ #include <asm/arch/clock_manager.h>
+ 
+ DECLARE_GLOBAL_DATA_PTR;
+@@ -1076,6 +1077,14 @@ unsigned int cm_get_qspi_controller_clk_hz(void)
+ 	return  cm_get_l4_noc_hz(CLKMGR_MAINPLL_NOCDIV_L4MAINCLK_LSB);
+ }
+ 
++/* Override weak dw_spi_get_clk implementation in designware_spi.c driver */
++int dw_spi_get_clk(struct udevice *bus, ulong *rate)
++{
++	*rate = cm_get_spi_controller_clk_hz();
++
++	return 0;
++}
++
+ void cm_print_clock_quick_summary(void)
+ {
+ 	printf("MPU       %10ld kHz\n", cm_get_mpu_clk_hz() / 1000);
+diff --git a/arch/arm/mach-socfpga/clock_manager_gen5.c b/arch/arm/mach-socfpga/clock_manager_gen5.c
+index 31fd51097a..a371d83620 100644
+--- a/arch/arm/mach-socfpga/clock_manager_gen5.c
++++ b/arch/arm/mach-socfpga/clock_manager_gen5.c
+@@ -6,6 +6,7 @@
+ 
+ #include <common.h>
+ #include <asm/io.h>
++#include <dm.h>
+ #include <asm/arch/clock_manager.h>
+ #include <wait_bit.h>
+ 
+@@ -509,6 +510,14 @@ unsigned int cm_get_spi_controller_clk_hz(void)
+ 	return clock;
+ }
+ 
++/* Override weak dw_spi_get_clk implementation in designware_spi.c driver */
++int dw_spi_get_clk(struct udevice *bus, ulong *rate)
++{
++	*rate = cm_get_spi_controller_clk_hz();
++
++	return 0;
++}
++
+ void cm_print_clock_quick_summary(void)
+ {
+ 	printf("MPU       %10ld kHz\n", cm_get_mpu_clk_hz() / 1000);
+-- 
+2.11.0
+

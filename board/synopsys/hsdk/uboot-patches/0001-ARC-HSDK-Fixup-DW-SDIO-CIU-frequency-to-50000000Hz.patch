@@ -1,0 +1,59 @@
+From 0aa461be83200a1211d365c1c924bd94e1b5a0d6 Mon Sep 17 00:00:00 2001
+From: Eugeniy Paltsev <Eugeniy.Paltsev@synopsys.com>
+Date: Sat, 21 Oct 2017 15:02:44 +0300
+Subject: [PATCH 01/46] ARC: HSDK: Fixup DW SDIO CIU frequency to 50000000Hz
+
+DW sdio controller has external ciu clock devider controlled via
+register in SDIO IP. Due to its unexpected default value
+(it should devide by 1 but it devides by 8)
+SDIO IP uses wrong CIU clock (it should be 100000000Hz but actual
+is 12500000Hz) and works unstable (see STAR 9001204800)
+
+So increase SDIO CIU frequency from actual 12500000Hz to 50000000Hz
+by switching from the default divisor value (div-by-8) to the
+minimum possible value of the divisor (div-by-2) in HSDK platform
+code.
+
+Signed-off-by: Eugeniy Paltsev <Eugeniy.Paltsev@synopsys.com>
+---
+ board/synopsys/hsdk/hsdk.c | 12 +++++++++++-
+ 1 file changed, 11 insertions(+), 1 deletion(-)
+
+diff --git a/board/synopsys/hsdk/hsdk.c b/board/synopsys/hsdk/hsdk.c
+index 7b562556e6..7641978a7b 100644
+--- a/board/synopsys/hsdk/hsdk.c
++++ b/board/synopsys/hsdk/hsdk.c
+@@ -26,6 +26,10 @@ int board_early_init_f(void)
+ 	return 0;
+ }
+ 
++#define SDIO_BASE              (ARC_PERIPHERAL_BASE + 0xA000)
++#define SDIO_UHS_REG_EXT       (SDIO_BASE + 0x108)
++#define SDIO_UHS_REG_EXT_DIV_2 (2 << 30)
++
+ int board_mmc_init(bd_t *bis)
+ {
+ 	struct dwmci_host *host = NULL;
+@@ -36,12 +40,18 @@ int board_mmc_init(bd_t *bis)
+ 		return 1;
+ 	}
+ 
++	/*
++	 * Switch SDIO external ciu clock divider from default div-by-8 to
++	 * minimum possible div-by-2.
++	 */
++	writel(SDIO_UHS_REG_EXT_DIV_2, (void __iomem *) SDIO_UHS_REG_EXT);
++
+ 	memset(host, 0, sizeof(struct dwmci_host));
+ 	host->name = "Synopsys Mobile storage";
+ 	host->ioaddr = (void *)ARC_DWMMC_BASE;
+ 	host->buswidth = 4;
+ 	host->dev_index = 0;
+-	host->bus_hz = 100000000;
++	host->bus_hz = 50000000;
+ 
+ 	add_dwmci(host, host->bus_hz / 2, 400000);
+ 
+-- 
+2.11.0
+

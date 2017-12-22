@@ -1,0 +1,107 @@
+From 3e2d11bb28ff6180bd1996e204f7ac1fdc64bf82 Mon Sep 17 00:00:00 2001
+From: Eugeniy Paltsev <Eugeniy.Paltsev@synopsys.com>
+Date: Wed, 1 Nov 2017 21:11:00 +0300
+Subject: [PATCH 43/46] ARC: HSDK: update dts and defconfig for SPI flash usage
+
+Add nodes of DW SPI controller, SPI flash IC and SPI CS GPIO.
+Enable SPI subsystem in defconfig.
+
+Signed-off-by: Eugeniy Paltsev <Eugeniy.Paltsev@synopsys.com>
+---
+ arch/arc/dts/hsdk.dts  | 34 ++++++++++++++++++++++++++++++++++
+ configs/hsdk_defconfig |  9 +++++++++
+ 2 files changed, 43 insertions(+)
+
+diff --git a/arch/arc/dts/hsdk.dts b/arch/arc/dts/hsdk.dts
+index 678a238071..3c7f36da94 100644
+--- a/arch/arc/dts/hsdk.dts
++++ b/arch/arc/dts/hsdk.dts
+@@ -13,6 +13,7 @@
+ 
+ 	aliases {
+ 		console = &uart0;
++		spi0 = "/spi@f0020000";
+ 	};
+ 
+ 	cpu_card {
+@@ -47,6 +48,13 @@
+ 		#clock-cells = <1>;
+ 	};
+ 
++	periph_clk: periph_clk {
++		#clock-cells = <0>;
++		compatible = "fixed-clock";
++		clock-frequency = <33330000>;
++		u-boot,dm-pre-reloc;
++	};
++
+ 	uart0: serial0@f0005000 {
+ 		compatible = "snps,dw-apb-uart";
+ 		reg = <0xf0005000 0x1000>;
+@@ -70,4 +78,30 @@
+ 		compatible = "generic-ohci";
+ 		reg = <0xf0060000 0x100>;
+ 	};
++
++	spi@f0020000 {
++		compatible = "snps,dw-apb-ssi";
++		reg = <0xf0020000 0x1000>;
++		#address-cells = <1>;
++		#size-cells = <0>;
++		spi-max-frequency = <4000000>;
++		clocks = <&periph_clk>;
++		clock-names = "spi_clk";
++		cs-gpio = <&cs_gpio 0>;
++		spi_flash@0 {
++			compatible = "spi-flash";
++			reg = <0>;
++			spi-max-frequency = <4000000>;
++		};
++	};
++
++	cs_gpio: gpio@f00114B0 {
++		u-boot,dm-pre-reloc;
++		compatible = "snps,hsdk-creg-gpio";
++		reg = <0xf00014B0 0x4>;
++		gpio-controller;
++		#gpio-cells = <1>;
++		gpio-bank-name = "hsdk-spi-cs";
++		gpio-count = <1>;
++	};
+ };
+diff --git a/configs/hsdk_defconfig b/configs/hsdk_defconfig
+index a04cfee5f0..c2cea0a2c3 100644
+--- a/configs/hsdk_defconfig
++++ b/configs/hsdk_defconfig
+@@ -10,6 +10,8 @@ CONFIG_BOARD_EARLY_INIT_F=y
+ CONFIG_SYS_PROMPT="hsdk# "
+ # CONFIG_CMD_FLASH is not set
+ CONFIG_CMD_MMC=y
++CONFIG_CMD_SF=y
++CONFIG_CMD_SPI=y
+ CONFIG_CMD_USB=y
+ # CONFIG_CMD_SETEXPR is not set
+ CONFIG_CMD_DHCP=y
+@@ -25,12 +27,19 @@ CONFIG_ENV_FAT_INTERFACE="mmc"
+ CONFIG_ENV_FAT_DEVICE_AND_PART="0:1"
+ CONFIG_NET_RANDOM_ETHADDR=y
+ CONFIG_DM=y
++CONFIG_DM_GPIO=y
++CONFIG_HSDK_CREG_GPIO=y
+ CONFIG_MMC=y
+ CONFIG_MMC_DW=y
++CONFIG_DM_SPI_FLASH=y
++CONFIG_SPI_FLASH=y
++CONFIG_SPI_FLASH_SST=y
+ CONFIG_DM_ETH=y
+ CONFIG_ETH_DESIGNWARE=y
+ CONFIG_DM_SERIAL=y
+ CONFIG_SYS_NS16550=y
++CONFIG_DM_SPI=y
++CONFIG_DESIGNWARE_SPI=y
+ CONFIG_USB=y
+ CONFIG_DM_USB=y
+ CONFIG_USB_EHCI_HCD=y
+-- 
+2.11.0
+

@@ -1,0 +1,172 @@
+From 2ff5b469b47e3a74ee6a01b33493746c890634d3 Mon Sep 17 00:00:00 2001
+From: Eugeniy Paltsev <Eugeniy.Paltsev@synopsys.com>
+Date: Mon, 25 Sep 2017 21:48:40 +0300
+Subject: [PATCH 39/46] DW SPI: use 32 bit access instead of 16 and 32 bit mix
+
+Current DW SPI driver uses 32 bit access for some registers and
+16 bit access for others. So if DW SPI IP is connected via bus
+which doesn't support 16 bit access we will get bus error.
+
+Fix that by switching to 32 bit access only instead of 16 and 32 bit mix
+
+Additional Documentation to Support this Change:
+The DW_apb_ssi databook states:
+"All registers in the DW_apb_ssi are addressed at 32-bit boundaries
+to remain consistent with the AHB bus. Where the physical size of
+any register is less than 32-bits wide, the upper unused bits of
+the 32-bit boundary are reserved. Writing to these bits has no
+effect; reading from these bits returns 0." [1]
+
+[1] Section 6.1 of dw_apb_ssi.pdf (version 3.22a)
+
+Signed-off-by: Eugeniy Paltsev <Eugeniy.Paltsev@synopsys.com>
+---
+ drivers/spi/designware_spi.c | 44 +++++++++++++++++---------------------------
+ 1 file changed, 17 insertions(+), 27 deletions(-)
+
+diff --git a/drivers/spi/designware_spi.c b/drivers/spi/designware_spi.c
+index 0f3d0e75ee..6cc4f51a1f 100644
+--- a/drivers/spi/designware_spi.c
++++ b/drivers/spi/designware_spi.c
+@@ -111,26 +111,16 @@ struct dw_spi_priv {
+ 	void *rx_end;
+ };
+ 
+-static inline u32 dw_readl(struct dw_spi_priv *priv, u32 offset)
++static inline u32 dw_read(struct dw_spi_priv *priv, u32 offset)
+ {
+ 	return __raw_readl(priv->regs + offset);
+ }
+ 
+-static inline void dw_writel(struct dw_spi_priv *priv, u32 offset, u32 val)
++static inline void dw_write(struct dw_spi_priv *priv, u32 offset, u32 val)
+ {
+ 	__raw_writel(val, priv->regs + offset);
+ }
+ 
+-static inline u16 dw_readw(struct dw_spi_priv *priv, u32 offset)
+-{
+-	return __raw_readw(priv->regs + offset);
+-}
+-
+-static inline void dw_writew(struct dw_spi_priv *priv, u32 offset, u16 val)
+-{
+-	__raw_writew(val, priv->regs + offset);
+-}
+-
+ static int request_gpio_cs(struct udevice *bus)
+ {
+ #if defined(CONFIG_DM_GPIO)
+@@ -176,14 +166,14 @@ static int dw_spi_ofdata_to_platdata(struct udevice *bus)
+ 
+ static inline void spi_enable_chip(struct dw_spi_priv *priv, int enable)
+ {
+-	dw_writel(priv, DW_SPI_SSIENR, (enable ? 1 : 0));
++	dw_write(priv, DW_SPI_SSIENR, (enable ? 1 : 0));
+ }
+ 
+ /* Restart the controller, disable all interrupts, clean rx fifo */
+ static void spi_hw_init(struct dw_spi_priv *priv)
+ {
+ 	spi_enable_chip(priv, 0);
+-	dw_writel(priv, DW_SPI_IMR, 0xff);
++	dw_write(priv, DW_SPI_IMR, 0xff);
+ 	spi_enable_chip(priv, 1);
+ 
+ 	/*
+@@ -194,13 +184,13 @@ static void spi_hw_init(struct dw_spi_priv *priv)
+ 		u32 fifo;
+ 
+ 		for (fifo = 1; fifo < 256; fifo++) {
+-			dw_writew(priv, DW_SPI_TXFLTR, fifo);
+-			if (fifo != dw_readw(priv, DW_SPI_TXFLTR))
++			dw_write(priv, DW_SPI_TXFLTR, fifo);
++			if (fifo != dw_read(priv, DW_SPI_TXFLTR))
+ 				break;
+ 		}
+ 
+ 		priv->fifo_len = (fifo == 1) ? 0 : fifo;
+-		dw_writew(priv, DW_SPI_TXFLTR, 0);
++		dw_write(priv, DW_SPI_TXFLTR, 0);
+ 	}
+ 	debug("%s: fifo_len=%d\n", __func__, priv->fifo_len);
+ }
+@@ -230,7 +220,7 @@ static inline u32 tx_max(struct dw_spi_priv *priv)
+ 	u32 tx_left, tx_room, rxtx_gap;
+ 
+ 	tx_left = (priv->tx_end - priv->tx) / (priv->bits_per_word >> 3);
+-	tx_room = priv->fifo_len - dw_readw(priv, DW_SPI_TXFLR);
++	tx_room = priv->fifo_len - dw_read(priv, DW_SPI_TXFLR);
+ 
+ 	/*
+ 	 * Another concern is about the tx/rx mismatch, we
+@@ -251,7 +241,7 @@ static inline u32 rx_max(struct dw_spi_priv *priv)
+ {
+ 	u32 rx_left = (priv->rx_end - priv->rx) / (priv->bits_per_word >> 3);
+ 
+-	return min_t(u32, rx_left, dw_readw(priv, DW_SPI_RXFLR));
++	return min_t(u32, rx_left, dw_read(priv, DW_SPI_RXFLR));
+ }
+ 
+ static void dw_writer(struct dw_spi_priv *priv)
+@@ -267,7 +257,7 @@ static void dw_writer(struct dw_spi_priv *priv)
+ 			else
+ 				txw = *(u16 *)(priv->tx);
+ 		}
+-		dw_writew(priv, DW_SPI_DR, txw);
++		dw_write(priv, DW_SPI_DR, txw);
+ 		debug("%s: tx=0x%02x\n", __func__, txw);
+ 		priv->tx += priv->bits_per_word >> 3;
+ 	}
+@@ -279,7 +269,7 @@ static void dw_reader(struct dw_spi_priv *priv)
+ 	u16 rxw;
+ 
+ 	while (max--) {
+-		rxw = dw_readw(priv, DW_SPI_DR);
++		rxw = dw_read(priv, DW_SPI_DR);
+ 		debug("%s: rx=0x%02x\n", __func__, rxw);
+ 
+ 		/* Care about rx if the transfer's original "rx" is not null */
+@@ -368,8 +358,8 @@ static int dw_spi_xfer(struct udevice *dev, unsigned int bitlen,
+ 
+ 	debug("%s: cr0=%08x\n", __func__, cr0);
+ 	/* Reprogram cr0 only if changed */
+-	if (dw_readw(priv, DW_SPI_CTRL0) != cr0)
+-		dw_writew(priv, DW_SPI_CTRL0, cr0);
++	if (dw_read(priv, DW_SPI_CTRL0) != cr0)
++		dw_write(priv, DW_SPI_CTRL0, cr0);
+ 
+ 	/*
+ 	 * Configure the desired SS (slave select 0...3) in the controller
+@@ -377,7 +367,7 @@ static int dw_spi_xfer(struct udevice *dev, unsigned int bitlen,
+ 	 * automatically. So no cs_activate() etc is needed in this driver.
+ 	 */
+ 	cs = spi_chip_select(dev);
+-	dw_writel(priv, DW_SPI_SER, 1 << cs);
++	dw_write(priv, DW_SPI_SER, 1 << cs);
+ 
+ 	/* Enable controller after writing control registers */
+ 	spi_enable_chip(priv, 1);
+@@ -393,8 +383,8 @@ static int dw_spi_xfer(struct udevice *dev, unsigned int bitlen,
+ 	 * in the begining of new transfer.
+ 	 */
+ 	start = get_timer(0);
+-	while (!(dw_readl(priv, DW_SPI_SR) & SR_TF_EMPT) ||
+-		(dw_readl(priv, DW_SPI_SR) & SR_BUSY)) {
++	while (!(dw_read(priv, DW_SPI_SR) & SR_TF_EMPT) ||
++		(dw_read(priv, DW_SPI_SR) & SR_BUSY)) {
+ 		if (get_timer(start) > RX_TIMEOUT) {
+ 			ret = -ETIMEDOUT;
+ 			break;
+@@ -423,7 +413,7 @@ static int dw_spi_set_speed(struct udevice *bus, uint speed)
+ 	/* clk_div doesn't support odd number */
+ 	clk_div = cm_get_spi_controller_clk_hz() / speed;
+ 	clk_div = (clk_div + 1) & 0xfffe;
+-	dw_writel(priv, DW_SPI_BAUDR, clk_div);
++	dw_write(priv, DW_SPI_BAUDR, clk_div);
+ 
+ 	/* Enable controller after writing control registers */
+ 	spi_enable_chip(priv, 1);
+-- 
+2.11.0
+

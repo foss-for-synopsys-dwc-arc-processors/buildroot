@@ -1,0 +1,651 @@
+From 3e27d0c4a3b1ded1591a3bc40011a1a96f8ede45 Mon Sep 17 00:00:00 2001
+From: Eugeniy Paltsev <Eugeniy.Paltsev@synopsys.com>
+Date: Mon, 27 Nov 2017 20:37:16 +0300
+Subject: [PATCH 08/46] ARC: HSDK: Add composite clock driver
+
+Add composite clock driver which supports CPU, SYSTEM, TUNNEL,
+HDMI, DDR PPLs and all their clock childs.
+
+Signed-off-by: Eugeniy Paltsev <Eugeniy.Paltsev@synopsys.com>
+---
+ drivers/clk/Makefile                |   1 +
+ drivers/clk/clk-hsdk-cgu-mappings.h |  24 ++
+ drivers/clk/clk-hsdk-cgu.c          | 583 ++++++++++++++++++++++++++++++++++++
+ 3 files changed, 608 insertions(+)
+ create mode 100644 drivers/clk/clk-hsdk-cgu-mappings.h
+ create mode 100644 drivers/clk/clk-hsdk-cgu.c
+
+diff --git a/drivers/clk/Makefile b/drivers/clk/Makefile
+index 4b6cc1935d..6425efa3b6 100644
+--- a/drivers/clk/Makefile
++++ b/drivers/clk/Makefile
+@@ -21,6 +21,7 @@ obj-$(CONFIG_CLK_AT91) += at91/
+ obj-$(CONFIG_CLK_BCM6345) += clk_bcm6345.o
+ obj-$(CONFIG_CLK_BOSTON) += clk_boston.o
+ obj-$(CONFIG_CLK_HSDK) += hsdk-clk.o
++obj-$(CONFIG_CLK_HSDK) += clk-hsdk-cgu.o
+ obj-$(CONFIG_ARCH_ASPEED) += aspeed/
+ obj-$(CONFIG_STM32F7) += clk_stm32f7.o
+ obj-$(CONFIG_STM32H7) += clk_stm32h7.o
+diff --git a/drivers/clk/clk-hsdk-cgu-mappings.h b/drivers/clk/clk-hsdk-cgu-mappings.h
+new file mode 100644
+index 0000000000..f76a3b91a9
+--- /dev/null
++++ b/drivers/clk/clk-hsdk-cgu-mappings.h
+@@ -0,0 +1,24 @@
++#define CLK_ARC_PLL		0
++#define CLK_ARC			1
++#define CLK_DDR_PLL		2
++#define CLK_SYS_PLL		3
++#define CLK_SYS_APB		4
++#define CLK_SYS_AXI		5
++#define CLK_SYS_ETH		6
++#define CLK_SYS_USB		7
++#define CLK_SYS_SDIO		8
++#define CLK_SYS_HDMI		9
++#define CLK_SYS_GFX_CORE	10
++#define CLK_SYS_GFX_DMA		11
++#define CLK_SYS_GFX_CFG		12
++#define CLK_SYS_DMAC_CORE	13
++#define CLK_SYS_DMAC_CFG	14
++#define CLK_SYS_SDIO_REF	15
++#define CLK_SYS_SPI_REF		16
++#define CLK_SYS_I2C_REF		17
++#define CLK_SYS_UART_REF	18
++#define CLK_SYS_EBI_REF		19
++#define CLK_TUN_PLL		20
++#define CLK_TUN			21
++#define CLK_HDMI_PLL		22
++#define CLK_HDMI		23
+diff --git a/drivers/clk/clk-hsdk-cgu.c b/drivers/clk/clk-hsdk-cgu.c
+new file mode 100644
+index 0000000000..048b172bad
+--- /dev/null
++++ b/drivers/clk/clk-hsdk-cgu.c
+@@ -0,0 +1,583 @@
++/*
++ * Synopsys HSDK SDP CGU clock driver
++ *
++ * Copyright (C) 2017 Synopsys
++ * Author: Eugeniy Paltsev <Eugeniy.Paltsev@synopsys.com>
++ *
++ * This file is licensed under the terms of the GNU General Public
++ * License version 2. This program is licensed "as is" without any
++ * warranty of any kind, whether express or implied.
++ */
++#include <common.h>
++#include <clk-uclass.h>
++#include <div64.h>
++#include <dm.h>
++#include <linux/io.h>
++
++#include "clk-hsdk-cgu-mappings.h"
++
++#define CGU_ARC_PLL_CTRL 0x000 //RW ARC PLL control register
++#define CGU_ARC_PLL_STATUS 0x004 //R ARC PLL status register
++
++#define CGU_SYS_PLL_CTRL 0x010 //RW SYS PLL control register
++#define CGU_SYS_PLL_STATUS 0x014 //R SYS PLL status register
++
++#define CGU_DDR_PLL_CTRL 0x020 //RW DDR PLL control register
++#define CGU_DDR_PLL_STATUS 0x024 //R DDR PLL status register
++
++#define CGU_TUN_PLL_CTRL 0x030 //RW Tunnel PLL control register
++#define CGU_TUN_PLL_STATUS 0x034 //R Tunnel PLL status register
++
++#define CGU_HDMI_PLL_CTRL 0x040 //RW HDMI PLL control register
++#define CGU_HDMI_PLL_STATUS 0x044 //R HDMI PLL status register
++
++#define CGU_ARC_IDIV 0x080 //RW Integer divider register for ARC HS38x4 clock
++
++#define CGU_SYS_IDIV_APB 0x180 //RW Integer divider register for APB clock
++#define CGU_SYS_IDIV_AXI 0x190 //RW Integer divider register for AXI clock
++#define CGU_SYS_IDIV_ETH 0x1A0 //RW Integer divider register for ETH clock
++#define CGU_SYS_IDIV_USB 0x1B0 //RW Integer divider register for USB clock
++#define CGU_SYS_IDIV_SDIO 0x1C0 //RW Integer divider register for SDIO clock
++#define CGU_SYS_IDIV_HDMI 0x1D0 //RW Integer divider register for HDMI clock
++#define CGU_SYS_IDIV_GFX_CORE 0x1E0 //RW Integer divider register for GFX core clock
++#define CGU_SYS_IDIV_GFX_DMA 0x1F0 //RW Integer divider register for GFX dma clock
++#define CGU_SYS_IDIV_GFX_CFG 0x200 //RW Integer divider register for GFX config clock
++#define CGU_SYS_IDIV_DMAC_CORE 0x210 //RW Integer divider register for DMAC clock
++#define CGU_SYS_IDIV_DMAC_CFG 0x220 //RW Integer divider register for DMAC config clock
++#define CGU_SYS_IDIV_SDIO_REF 0x230 //RW Integer divider register for SDIO reference clock
++#define CGU_SYS_IDIV_SPI_REF 0x240 //RW Integer divider register for SPI reference clock
++#define CGU_SYS_IDIV_I2C_REF 0x250 //RW Integer divider register for I2C reference clock
++#define CGU_SYS_IDIV_UART_REF 0x260 //RW Integer divider register for UART reference clock
++#define CGU_SYS_IDIV_EBI_REF 0x270 //RW Integer divider register for EBI reference clock
++
++#define CGU_TUN_IDIV 0x380 //RW Integer divider register for Tunnel clock
++
++#define CGU_HDMI_IDIV_APB 0x480 //RW Integer divider register for HDMI clock
++
++#define CGU_I2S_IDIV_TX 0x580 //RW Integer divider register for I2S TX clock
++#define CGU_I2S_IDIV_RX 0x590 //RW Integer divider register for I2S RX clock
++
++////////////////////////
++#define CGU_PLL_CTRL	0x000 /* ARC PLL control register */
++#define CGU_PLL_STATUS	0x004 /* ARC PLL status register */
++#define CGU_PLL_FMEAS	0x008 /* ARC PLL frequency measurement register */
++#define CGU_PLL_MON	0x00C /* ARC PLL monitor register */
++
++#define CGU_PLL_CTRL_ODIV_SHIFT		2
++#define CGU_PLL_CTRL_IDIV_SHIFT		4
++#define CGU_PLL_CTRL_FBDIV_SHIFT	9
++#define CGU_PLL_CTRL_BAND_SHIFT		20
++
++#define CGU_PLL_CTRL_ODIV_MASK		GENMASK(3, CGU_PLL_CTRL_ODIV_SHIFT)
++#define CGU_PLL_CTRL_IDIV_MASK		GENMASK(8, CGU_PLL_CTRL_IDIV_SHIFT)
++#define CGU_PLL_CTRL_FBDIV_MASK		GENMASK(15, CGU_PLL_CTRL_FBDIV_SHIFT)
++
++#define CGU_PLL_CTRL_PD			BIT(0)
++#define CGU_PLL_CTRL_BYPASS		BIT(1)
++
++#define CGU_PLL_STATUS_LOCK		BIT(0)
++#define CGU_PLL_STATUS_ERR		BIT(1)
++
++#define HSDK_PLL_MAX_LOCK_TIME		100 /* 100 us */
++
++#define CREG_CORE_IF_DIV		0x000 /* ARC CORE interface divider */
++#define CORE_IF_CLK_THRESHOLD_HZ	500000000
++#define CREG_CORE_IF_CLK_DIV_1		0x0
++#define CREG_CORE_IF_CLK_DIV_2		0x1
++
++#define PARENT_RATE			33333333 /* fixed clock - xtal */
++////////////////////////
++
++#define CGU_ARC_PLL_OFFT	0x0
++#define CGU_SYS_PLL_OFFT	0x10
++#define CGU_DDR_PLL_OFFT	0x20
++#define CGU_TUN_PLL_OFFT	0x30
++#define CGU_HDMI_PLL_OFFT	0x40
++
++#define CGU_MAX_CLOCKS		24
++
++#define CGU_IDIV_MASK		0xFF
++
++struct hsdk_pll_cfg {
++	u32 rate;
++	u32 idiv;
++	u32 fbdiv;
++	u32 odiv;
++	u32 band;
++};
++
++static const struct hsdk_pll_cfg asdt_pll_cfg[] = {
++	{ 100000000,  0, 11, 3, 0 },
++	{ 125000000,  0, 14, 3, 0 },
++	{ 133000000,  0, 15, 3, 0 },
++	{ 150000000,  0, 17, 3, 0 },
++	{ 200000000,  1, 47, 3, 0 },
++	{ 233000000,  1, 27, 2, 0 },
++	{ 300000000,  1, 35, 2, 0 },
++	{ 333000000,  1, 39, 2, 0 },
++	{ 400000000,  1, 47, 2, 0 },
++	{ 500000000,  0, 14, 1, 0 },
++	{ 600000000,  0, 17, 1, 0 },
++	{ 700000000,  0, 20, 1, 0 },
++	{ 800000000,  0, 23, 1, 0 },
++	{ 900000000,  1, 26, 0, 0 },
++	{ 1000000000, 1, 29, 0, 0 },
++	{ 1100000000, 1, 32, 0, 0 },
++	{ 1200000000, 1, 35, 0, 0 },
++	{ 1300000000, 1, 38, 0, 0 },
++	{ 1400000000, 1, 41, 0, 0 },
++	{ 1500000000, 1, 44, 0, 0 },
++	{ 1600000000, 1, 47, 0, 0 },
++	{}
++};
++
++static const struct hsdk_pll_cfg hdmi_pll_cfg[] = {
++	{ 297000000,  0, 21, 2, 0 },
++	{ 540000000,  0, 19, 1, 0 },
++	{ 594000000,  0, 21, 1, 0 },
++	{}
++};
++
++struct hsdk_pll_clk {
++	/* CGU block register */
++	void __iomem *cgu_regs;
++	/* CREG block register */
++	void __iomem *creg_regs;
++
++	/* PLLs registers */
++	void __iomem *regs;
++	/* PLLs special registers */
++	void __iomem *spec_regs;
++	/* PLLs devdata */
++	const struct hsdk_pll_devdata *pll_devdata;
++
++	/* Dividers registers */
++	void __iomem *idiv_regs;
++};
++
++struct hsdk_pll_devdata {
++	const struct hsdk_pll_cfg *pll_cfg;
++	int (*update_rate)(struct hsdk_pll_clk *clk, unsigned long rate,
++			   const struct hsdk_pll_cfg *cfg);
++};
++
++static int hsdk_pll_core_update_rate(struct hsdk_pll_clk *, unsigned long,
++				     const struct hsdk_pll_cfg *);
++static int hsdk_pll_comm_update_rate(struct hsdk_pll_clk *, unsigned long,
++				     const struct hsdk_pll_cfg *);
++
++static const struct hsdk_pll_devdata core_pll_devdata = {
++	.pll_cfg = asdt_pll_cfg,
++	.update_rate = hsdk_pll_core_update_rate,
++};
++
++static const struct hsdk_pll_devdata sdt_pll_devdata = {
++	.pll_cfg = asdt_pll_cfg,
++	.update_rate = hsdk_pll_comm_update_rate,
++};
++
++static const struct hsdk_pll_devdata hdmi_pll_devdata = {
++	.pll_cfg = hdmi_pll_cfg,
++	.update_rate = hsdk_pll_comm_update_rate,
++};
++
++struct hsdk_cgu_clock_map {
++	u32 cgu_pll_oft;
++	u32 creg_div_oft;
++	u32 cgu_div_oft;
++	const struct hsdk_pll_devdata *pll_devdata;
++};
++
++static const struct hsdk_cgu_clock_map clock_map[] = {
++	{ CGU_ARC_PLL_OFFT, 0, 0, &core_pll_devdata }, // CLK_ARC_PLL
++	{ CGU_ARC_PLL_OFFT, 0, CGU_ARC_IDIV, &core_pll_devdata }, // CLK_ARC
++	{ CGU_DDR_PLL_OFFT, 0, 0, &sdt_pll_devdata }, // CLK_DDR_PLL
++	{ CGU_SYS_PLL_OFFT, 0, 0, &sdt_pll_devdata }, // CLK_SYS_PLL
++	{ CGU_SYS_PLL_OFFT, 0, CGU_SYS_IDIV_APB, &sdt_pll_devdata }, // CLK_SYS_APB
++	{ CGU_SYS_PLL_OFFT, 0, CGU_SYS_IDIV_AXI, &sdt_pll_devdata }, // CLK_SYS_AXI
++	{ CGU_SYS_PLL_OFFT, 0, CGU_SYS_IDIV_ETH, &sdt_pll_devdata }, // CLK_SYS_ETH
++	{ CGU_SYS_PLL_OFFT, 0, CGU_SYS_IDIV_USB, &sdt_pll_devdata }, // CLK_SYS_USB
++	{ CGU_SYS_PLL_OFFT, 0, CGU_SYS_IDIV_SDIO, &sdt_pll_devdata }, // CLK_SYS_SDIO
++	{ CGU_SYS_PLL_OFFT, 0, CGU_SYS_IDIV_HDMI, &sdt_pll_devdata }, // CLK_SYS_HDMI
++	{ CGU_SYS_PLL_OFFT, 0, CGU_SYS_IDIV_GFX_CORE, &sdt_pll_devdata }, // CLK_SYS_GFX_CORE
++	{ CGU_SYS_PLL_OFFT, 0, CGU_SYS_IDIV_GFX_DMA, &sdt_pll_devdata }, // CLK_SYS_GFX_DMA
++	{ CGU_SYS_PLL_OFFT, 0, CGU_SYS_IDIV_GFX_CFG, &sdt_pll_devdata }, // CLK_SYS_GFX_CFG
++	{ CGU_SYS_PLL_OFFT, 0, CGU_SYS_IDIV_DMAC_CORE, &sdt_pll_devdata }, // CLK_SYS_DMAC_CORE
++	{ CGU_SYS_PLL_OFFT, 0, CGU_SYS_IDIV_DMAC_CFG, &sdt_pll_devdata }, // CLK_SYS_DMAC_CFG
++	{ CGU_SYS_PLL_OFFT, 0, CGU_SYS_IDIV_SDIO_REF, &sdt_pll_devdata }, // CLK_SYS_SDIO_REF
++	{ CGU_SYS_PLL_OFFT, 0, CGU_SYS_IDIV_SPI_REF, &sdt_pll_devdata }, // CLK_SYS_SPI_REF
++	{ CGU_SYS_PLL_OFFT, 0, CGU_SYS_IDIV_I2C_REF, &sdt_pll_devdata }, // CLK_SYS_I2C_REF
++	{ CGU_SYS_PLL_OFFT, 0, CGU_SYS_IDIV_UART_REF, &sdt_pll_devdata }, // CLK_SYS_UART_REF
++	{ CGU_SYS_PLL_OFFT, 0, CGU_SYS_IDIV_EBI_REF, &sdt_pll_devdata }, // CLK_SYS_EBI_REF
++	{ CGU_TUN_PLL_OFFT, 0, 0, &sdt_pll_devdata }, // CLK_TUN_PLL
++	{ CGU_TUN_PLL_OFFT, 0, CGU_TUN_IDIV, &sdt_pll_devdata }, // CLK_TUN
++	{ CGU_HDMI_PLL_OFFT, 0, 0, &hdmi_pll_devdata }, // CLK_HDMI_PLL
++	{ CGU_HDMI_PLL_OFFT, 0, CGU_HDMI_IDIV_APB, &hdmi_pll_devdata } // CLK_HDMI
++};
++
++static inline void hsdk_idiv_write(struct hsdk_pll_clk *clk, u32 val)
++{
++	iowrite32(val, clk->idiv_regs);
++}
++
++static inline u32 hsdk_idiv_read(struct hsdk_pll_clk *clk)
++{
++	return ioread32(clk->idiv_regs);
++}
++
++static inline void hsdk_pll_write(struct hsdk_pll_clk *clk, u32 reg, u32 val)
++{
++	iowrite32(val, clk->regs + reg);
++}
++
++static inline u32 hsdk_pll_read(struct hsdk_pll_clk *clk, u32 reg)
++{
++	return ioread32(clk->regs + reg);
++}
++
++static inline void hsdk_pll_spcwrite(struct hsdk_pll_clk *clk, u32 reg, u32 val)
++{
++	iowrite32(val, clk->spec_regs + reg);
++}
++
++static inline u32 hsdk_pll_spcread(struct hsdk_pll_clk *clk, u32 reg)
++{
++	return ioread32(clk->spec_regs + reg);
++}
++
++static inline void hsdk_pll_set_cfg(struct hsdk_pll_clk *clk,
++				    const struct hsdk_pll_cfg *cfg)
++{
++	u32 val = 0;
++
++	/* Powerdown and Bypass bits should be cleared */
++	val |= cfg->idiv << CGU_PLL_CTRL_IDIV_SHIFT;
++	val |= cfg->fbdiv << CGU_PLL_CTRL_FBDIV_SHIFT;
++	val |= cfg->odiv << CGU_PLL_CTRL_ODIV_SHIFT;
++	val |= cfg->band << CGU_PLL_CTRL_BAND_SHIFT;
++
++	pr_debug("write configurarion: %#x\n", val);
++
++	hsdk_pll_write(clk, CGU_PLL_CTRL, val);
++}
++
++static inline bool hsdk_pll_is_locked(struct hsdk_pll_clk *clk)
++{
++	return !!(hsdk_pll_read(clk, CGU_PLL_STATUS) & CGU_PLL_STATUS_LOCK);
++}
++
++static inline bool hsdk_pll_is_err(struct hsdk_pll_clk *clk)
++{
++	return !!(hsdk_pll_read(clk, CGU_PLL_STATUS) & CGU_PLL_STATUS_ERR);
++}
++
++static ulong hsdk_pll_get_rate(struct clk *sclk)
++{
++	u32 val;
++	u64 rate;
++	u32 idiv, fbdiv, odiv;
++	struct hsdk_pll_clk *clk = dev_get_priv(sclk->dev);
++
++	val = hsdk_pll_read(clk, CGU_PLL_CTRL);
++
++	pr_debug("current configurarion: %#x\n", val);
++
++	/* Check if PLL is disabled */
++	if (val & CGU_PLL_CTRL_PD)
++		return 0;
++
++	/* Check if PLL is bypassed */
++	if (val & CGU_PLL_CTRL_BYPASS)
++		return PARENT_RATE;
++
++	/* input divider = reg.idiv + 1 */
++	idiv = 1 + ((val & CGU_PLL_CTRL_IDIV_MASK) >> CGU_PLL_CTRL_IDIV_SHIFT);
++	/* fb divider = 2*(reg.fbdiv + 1) */
++	fbdiv = 2 * (1 + ((val & CGU_PLL_CTRL_FBDIV_MASK) >> CGU_PLL_CTRL_FBDIV_SHIFT));
++	/* output divider = 2^(reg.odiv) */
++	odiv = 1 << ((val & CGU_PLL_CTRL_ODIV_MASK) >> CGU_PLL_CTRL_ODIV_SHIFT);
++
++	rate = (u64)PARENT_RATE * fbdiv;
++	do_div(rate, idiv * odiv);
++
++	return rate;
++}
++
++static unsigned long hsdk_pll_round_rate(struct clk *sclk, unsigned long rate)
++{
++	int i;
++	unsigned long best_rate;
++	struct hsdk_pll_clk *clk = dev_get_priv(sclk->dev);
++	const struct hsdk_pll_cfg *pll_cfg = clk->pll_devdata->pll_cfg;
++
++	if (pll_cfg[0].rate == 0)
++		return -EINVAL;
++
++	best_rate = pll_cfg[0].rate;
++
++	for (i = 1; pll_cfg[i].rate != 0; i++) {
++		if (abs(rate - pll_cfg[i].rate) < abs(rate - best_rate))
++			best_rate = pll_cfg[i].rate;
++	}
++
++	pr_debug("chosen best rate: %lu\n", best_rate);
++
++	return best_rate;
++}
++
++static int hsdk_pll_comm_update_rate(struct hsdk_pll_clk *clk,
++				     unsigned long rate,
++				     const struct hsdk_pll_cfg *cfg)
++{
++	hsdk_pll_set_cfg(clk, cfg);
++
++	/*
++	 * Wait until CGU relocks and check error status.
++	 * If after timeout CGU is unlocked yet return error.
++	 */
++	udelay(HSDK_PLL_MAX_LOCK_TIME);
++	if (!hsdk_pll_is_locked(clk))
++		return -ETIMEDOUT;
++
++	if (hsdk_pll_is_err(clk))
++		return -EINVAL;
++
++	return 0;
++}
++
++static int hsdk_pll_core_update_rate(struct hsdk_pll_clk *clk,
++				     unsigned long rate,
++				     const struct hsdk_pll_cfg *cfg)
++{
++	/*
++	 * When core clock exceeds 500MHz, the divider for the interface
++	 * clock must be programmed to div-by-2.
++	 */
++	if (rate > CORE_IF_CLK_THRESHOLD_HZ)
++		hsdk_pll_spcwrite(clk, CREG_CORE_IF_DIV, CREG_CORE_IF_CLK_DIV_2);
++
++	hsdk_pll_set_cfg(clk, cfg);
++
++	/*
++	 * Wait until CGU relocks and check error status.
++	 * If after timeout CGU is unlocked yet return error.
++	 */
++	udelay(HSDK_PLL_MAX_LOCK_TIME);
++	if (!hsdk_pll_is_locked(clk))
++		return -ETIMEDOUT;
++
++	if (hsdk_pll_is_err(clk))
++		return -EINVAL;
++
++	/*
++	 * Program divider to div-by-1 if we succesfuly set core clock below
++	 * 500MHz threshold.
++	 */
++	if (rate <= CORE_IF_CLK_THRESHOLD_HZ)
++		hsdk_pll_spcwrite(clk, CREG_CORE_IF_DIV, CREG_CORE_IF_CLK_DIV_1);
++
++	return 0;
++}
++
++static ulong hsdk_pll_set_rate(struct clk *sclk, ulong rate)
++{
++	int i;
++	unsigned long best_rate;
++	struct hsdk_pll_clk *clk = dev_get_priv(sclk->dev);
++	const struct hsdk_pll_cfg *pll_cfg = clk->pll_devdata->pll_cfg;
++
++	best_rate = hsdk_pll_round_rate(sclk, rate);
++
++	for (i = 0; pll_cfg[i].rate != 0; i++) {
++		if (pll_cfg[i].rate == best_rate) {
++			return clk->pll_devdata->update_rate(clk, best_rate,
++							     &pll_cfg[i]);
++		}
++	}
++
++	pr_err("invalid rate=%ld, parent_rate=%d\n", best_rate, PARENT_RATE);
++
++	return -EINVAL;
++}
++
++static ulong hsdk_idiv_get_rate(struct clk *sclk)
++{
++	struct hsdk_pll_clk *clk = dev_get_priv(sclk->dev);
++	ulong parent_rate = hsdk_pll_get_rate(sclk);
++	u32 div_factor = hsdk_idiv_read(clk);
++
++	div_factor &= CGU_IDIV_MASK;
++
++	debug("current configurarion: %#x (%d)\n", div_factor, div_factor);
++
++	if (div_factor == 0)
++		return 0;
++
++	return parent_rate / div_factor;
++}
++
++static ulong hsdk_idiv_set_rate(struct clk *sclk, ulong rate)
++{
++	struct hsdk_pll_clk *clk = dev_get_priv(sclk->dev);
++	ulong parent_rate = hsdk_pll_get_rate(sclk);
++	u32 div_factor;
++
++	div_factor = parent_rate / rate;
++	if (abs(rate - parent_rate / (div_factor + 1)) <= abs(rate - parent_rate / div_factor))
++		div_factor += 1;
++
++	if (div_factor & ~CGU_IDIV_MASK) {
++		pr_err("invalid rate=%ld, parent_rate=%ld, div=%d: max divider valie is%d\n",
++		       rate, parent_rate, div_factor, CGU_IDIV_MASK);
++
++		div_factor = CGU_IDIV_MASK;
++	}
++
++	if (div_factor == 0) {
++		pr_err("invalid rate=%ld, parent_rate=%ld, div=%d: min divider valie is 1\n",
++		       rate, parent_rate, div_factor);
++
++		div_factor = 1;
++	}
++
++	hsdk_idiv_write(clk, div_factor);
++
++	return 0;
++}
++
++static void hsdk_prepare_clock_tree_branch(struct clk *sclk)
++{
++	struct hsdk_pll_clk *clk = dev_get_priv(sclk->dev);
++
++	clk->pll_devdata = clock_map[sclk->id].pll_devdata;
++	clk->regs = clk->cgu_regs + clock_map[sclk->id].cgu_pll_oft;
++	clk->spec_regs = clk->creg_regs + clock_map[sclk->id].creg_div_oft;
++	clk->idiv_regs = clk->cgu_regs + clock_map[sclk->id].cgu_div_oft;
++}
++
++static ulong hsdk_cgu_get_rate(struct clk *sclk)
++{
++//	printf("PAL: %s: id: %ld\n", __func__, sclk->id);
++
++	if (sclk->id >= CGU_MAX_CLOCKS)
++		return -EINVAL;
++
++	hsdk_prepare_clock_tree_branch(sclk);
++
++	switch (sclk->id) {
++		case CLK_ARC_PLL:
++		case CLK_DDR_PLL:
++		case CLK_SYS_PLL:
++		case CLK_TUN_PLL:
++		case CLK_HDMI_PLL:
++			return hsdk_pll_get_rate(sclk);
++			break;
++
++		case CLK_ARC:
++		case CLK_SYS_APB:
++		case CLK_SYS_AXI:
++		case CLK_SYS_ETH:
++		case CLK_SYS_USB:
++		case CLK_SYS_SDIO:
++		case CLK_SYS_HDMI:
++		case CLK_SYS_GFX_CORE:
++		case CLK_SYS_GFX_DMA:
++		case CLK_SYS_GFX_CFG:
++		case CLK_SYS_DMAC_CORE:
++		case CLK_SYS_DMAC_CFG:
++		case CLK_SYS_SDIO_REF:
++		case CLK_SYS_SPI_REF:
++		case CLK_SYS_I2C_REF:
++		case CLK_SYS_UART_REF:
++		case CLK_SYS_EBI_REF:
++		case CLK_TUN:
++		case CLK_HDMI:
++			return hsdk_idiv_get_rate(sclk);
++			break;
++
++		default:
++			pr_err("CLK-ERR: %s: id: %ld: unsupported\n", __func__, sclk->id);
++			break;
++	}
++
++	return 0;
++}
++
++static ulong hsdk_cgu_set_rate(struct clk *sclk, ulong rate)
++{
++//	debug("PAL: %s: id: %ld\n", __func__, sclk->id);
++
++	if (sclk->id >= CGU_MAX_CLOCKS)
++		return -EINVAL;
++
++	hsdk_prepare_clock_tree_branch(sclk);
++
++	switch (sclk->id) {
++		case CLK_ARC_PLL:
++		case CLK_DDR_PLL:
++		case CLK_SYS_PLL:
++		case CLK_TUN_PLL:
++		case CLK_HDMI_PLL:
++			return hsdk_pll_set_rate(sclk, rate);
++			break;
++
++		case CLK_ARC:
++		case CLK_SYS_APB:
++		case CLK_SYS_AXI:
++		case CLK_SYS_ETH:
++		case CLK_SYS_USB:
++		case CLK_SYS_SDIO:
++		case CLK_SYS_HDMI:
++		case CLK_SYS_GFX_CORE:
++		case CLK_SYS_GFX_DMA:
++		case CLK_SYS_GFX_CFG:
++		case CLK_SYS_DMAC_CORE:
++		case CLK_SYS_DMAC_CFG:
++		case CLK_SYS_SDIO_REF:
++		case CLK_SYS_SPI_REF:
++		case CLK_SYS_I2C_REF:
++		case CLK_SYS_UART_REF:
++		case CLK_SYS_EBI_REF:
++		case CLK_TUN:
++		case CLK_HDMI:
++			return hsdk_idiv_set_rate(sclk, rate);
++			break;
++
++		default:
++			pr_err("CLK-ERR: %s: id: %ld: unsupported\n", __func__, sclk->id);
++			break;
++	}
++
++	return 0;
++}
++
++static const struct clk_ops hsdk_cgu_ops = {
++	.set_rate = hsdk_cgu_set_rate,
++	.get_rate = hsdk_cgu_get_rate,
++};
++
++static int hsdk_cgu_clk_probe(struct udevice *dev)
++{
++	struct hsdk_pll_clk *pll_clk = dev_get_priv(dev);
++
++	BUILD_BUG_ON(ARRAY_SIZE(clock_map) != CGU_MAX_CLOCKS);
++
++	pll_clk->cgu_regs = (void __iomem *)devfdt_get_addr_index(dev, 0);
++	pll_clk->creg_regs = (void __iomem *)devfdt_get_addr_index(dev, 1);
++
++	return 0;
++}
++
++static const struct udevice_id hsdk_cgu_clk_id[] = {
++	{ .compatible = "snps,hsdk-cgu-clock" },
++	{ }
++};
++
++U_BOOT_DRIVER(hsdk_cgu_clk) = {
++	.name = "hsdk-cgu-clk",
++	.id = UCLASS_CLK,
++	.of_match = hsdk_cgu_clk_id,
++	.probe = hsdk_cgu_clk_probe,
++	.platdata_auto_alloc_size = sizeof(struct hsdk_pll_clk),
++	.ops = &hsdk_cgu_ops,
++};
+-- 
+2.11.0
+

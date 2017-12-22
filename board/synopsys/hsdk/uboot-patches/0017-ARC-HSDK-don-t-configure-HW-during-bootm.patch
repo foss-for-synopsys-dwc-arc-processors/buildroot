@@ -1,0 +1,75 @@
+From 9fdebe8e91fd26ca3ec79fbb45c3cd2c976dcbe8 Mon Sep 17 00:00:00 2001
+From: Eugeniy Paltsev <Eugeniy.Paltsev@synopsys.com>
+Date: Sat, 9 Dec 2017 20:30:10 +0300
+Subject: [PATCH 17/46] ARC: HSDK: don't configure HW during bootm
+
+Signed-off-by: Eugeniy Paltsev <Eugeniy.Paltsev@synopsys.com>
+---
+ arch/arc/lib/bootm.c | 28 +++++++++++++++++-----------
+ 1 file changed, 17 insertions(+), 11 deletions(-)
+
+diff --git a/arch/arc/lib/bootm.c b/arch/arc/lib/bootm.c
+index d4fddc38b3..4fdf3e045e 100644
+--- a/arch/arc/lib/bootm.c
++++ b/arch/arc/lib/bootm.c
+@@ -51,26 +51,37 @@ static int cleanup_before_linux(void)
+ 	return 0;
+ }
+ 
++__weak int board_prep_linux(bootm_headers_t *images) { return 0; }
++
+ /* Subcommand: PREP */
+ static void boot_prep_linux(bootm_headers_t *images)
+ {
+ 	if (image_setup_linux(images))
+ 		hang();
++
++	board_prep_linux(images);
+ }
+ 
+-__weak int bootm_prepare_and_run(u32 entry) { return 0; }
++__weak void board_jump_and_run(ulong entry, int zero, int arch, uint params)
++{
++	void (*kernel_entry)(int zero, int arch, uint params);
++
++	kernel_entry = (void (*)(int, int, uint))entry;
++
++	kernel_entry(zero, arch, params);
++}
+ 
+ /* Subcommand: GO */
+ static void boot_jump_linux(bootm_headers_t *images, int flag)
+ {
+-	void (*kernel_entry)(int zero, int arch, uint params);
++	ulong kernel_entry;
+ 	unsigned int r0, r2;
+ 	int fake = (flag & BOOTM_STATE_OS_FAKE_GO);
+ 
+-	kernel_entry = (void (*)(int, int, uint))images->ep;
++	kernel_entry = images->ep;
+ 
+ 	debug("## Transferring control to Linux (at address %08lx)...\n",
+-	      (ulong) kernel_entry);
++	      kernel_entry);
+ 	bootstage_mark(BOOTSTAGE_ID_RUN_OS);
+ 
+ 	printf("\nStarting kernel ...%s\n\n", fake ?
+@@ -87,13 +98,8 @@ static void boot_jump_linux(bootm_headers_t *images, int flag)
+ 		r2 = (unsigned int)env_get("bootargs");
+ 	}
+ 
+-	if (!fake) {
+-		//TODO: split for prepare and run
+-		if (bootm_prepare_and_run((u32)kernel_entry))
+-			return;
+-
+-		kernel_entry(r0, 0, r2);
+-	}
++	if (!fake)
++		board_jump_and_run(kernel_entry, r0, 0, r2);
+ }
+ 
+ int do_bootm_linux(int flag, int argc, char *argv[], bootm_headers_t *images)
+-- 
+2.11.0
+

@@ -1,0 +1,681 @@
+From c9d1c6994a9b713ecefda32b4ce385769b9eb148 Mon Sep 17 00:00:00 2001
+From: Eugeniy Paltsev <Eugeniy.Paltsev@synopsys.com>
+Date: Thu, 9 Nov 2017 18:01:35 +0300
+Subject: [PATCH 05/46] ARC: HSDK: add hsdk_go comand
+
+hsdk_go - Boot stand-alone application on HSDK (Synopsys
+HSDK-specific command)
+
+Signed-off-by: Eugeniy Paltsev <Eugeniy.Paltsev@synopsys.com>
+---
+ board/synopsys/hsdk/Makefile   |   1 +
+ board/synopsys/hsdk/hsdk-cmd.c | 648 +++++++++++++++++++++++++++++++++++++++++
+ 2 files changed, 649 insertions(+)
+ create mode 100644 board/synopsys/hsdk/hsdk-cmd.c
+
+diff --git a/board/synopsys/hsdk/Makefile b/board/synopsys/hsdk/Makefile
+index d84dd03265..49fca891e1 100644
+--- a/board/synopsys/hsdk/Makefile
++++ b/board/synopsys/hsdk/Makefile
+@@ -5,3 +5,4 @@
+ #
+ 
+ obj-y	+= hsdk.o
++obj-y	+= hsdk-cmd.o
+diff --git a/board/synopsys/hsdk/hsdk-cmd.c b/board/synopsys/hsdk/hsdk-cmd.c
+new file mode 100644
+index 0000000000..f3b8a1d43d
+--- /dev/null
++++ b/board/synopsys/hsdk/hsdk-cmd.c
+@@ -0,0 +1,648 @@
++#define DEBUG
++
++#include <common.h>
++#include <config.h>
++#include <clk.h>
++#include <dm/device.h>
++#include <linux/printk.h>
++#include <linux/kernel.h>
++#include <linux/io.h>
++#include <asm/arcregs.h>
++
++#define HSDKGO_VERSION	"0.4"
++
++#define MAX_CPUS	4
++#define MASTER_CPU	0
++#define MAX_CMD_LEN	40
++
++#define VAL_NO_XCCM	0x10
++
++void smp_set_core_boot_addr(unsigned long addr, int corenr);
++
++struct hsdk_per_cpu_ctl {
++	bool used;
++	u32 entry;
++	u32 icache;
++	u32 dcache;
++	u32 iccm;
++	u32 dccm;
++};
++
++struct hsdk_common_ctl {
++	bool halt_on_boot;
++	u32 core_mask;
++	u32 cpu_freq;
++	u32 axi_freq;
++	u32 tun_freq;
++	u32 nvlim;
++};
++
++struct hsdk_env_map {
++	const char * const env_name;
++	bool core_specific;
++	bool mandatory;
++	u32 min;
++	u32 max;
++	int (* func)(u32, u32);
++};
++
++/* Temporary place for slave cpu stack */
++static u32 slave_stack[1024] __attribute__((aligned(4)));
++
++static struct hsdk_per_cpu_ctl hsdk_env_per_cpu_ctl[MAX_CPUS] = {};
++static struct hsdk_common_ctl hsdk_env_common_ctl = {};
++
++int soc_clk_ctl(const char *name, ulong *rate, bool set)
++{
++	int ret;
++	struct clk clk;
++
++	/* Dummy fmeas device, just to able to use standard clk_* api funcs */
++	struct udevice fmeas = {
++		.name = "clk-fmeas",
++		.node = ofnode_path("/clk-fmeas"),
++	};
++
++	ret = clk_get_by_name(&fmeas, name, &clk);
++	if (ret)
++		return ret;
++
++	ret = clk_enable(&clk);
++	if (ret && ret != -ENOSYS)
++		return ret;
++
++	if (set) {
++		ret = clk_set_rate(&clk, *rate);
++		if (ret)
++			return ret;
++	}
++
++	*rate = clk_get_rate(&clk);
++
++	clk_free(&clk);
++
++	printf("HSDK: clock %s rate %lu\n", name, *rate);
++
++	return 0;
++}
++
++static int core_ccm_check(u32 core, u32 val)
++{
++	/* Cores 0 and 2 don't have ICCM and DCCM */
++	if ((core == 0 || core == 2) && val != VAL_NO_XCCM) {
++		pr_err("Cores 0 and 2 don't have ICCM and DCCM");
++		return -EINVAL;
++	}
++
++	/* Cores 1 and 3 have ICCM and DCCM */
++	if ((core == 1 || core == 3) && val == VAL_NO_XCCM) {
++		pr_err("Cores 1 and 3 have ICCM and DCCM, we can't disable it");
++		return -EINVAL;
++	}
++
++	return 0;
++}
++
++int do_core_mask(u32 core, u32 val)
++{
++	hsdk_env_common_ctl.core_mask = val;
++
++	if (val & 0x1)
++		hsdk_env_per_cpu_ctl[0].used = true;
++
++	if (val & 0x2)
++		hsdk_env_per_cpu_ctl[1].used = true;
++
++	if (val & 0x4)
++		hsdk_env_per_cpu_ctl[2].used = true;
++
++	if (val & 0x8)
++		hsdk_env_per_cpu_ctl[3].used = true;
++
++	return 0;
++}
++
++int do_cpu_freq(u32 core, u32 val)
++{
++	hsdk_env_common_ctl.cpu_freq = val;
++	return 0;
++}
++
++int do_axi_freq(u32 core, u32 val)
++{
++	hsdk_env_common_ctl.axi_freq = val;
++	return 0;
++}
++
++int do_tun_freq(u32 core, u32 val)
++{
++	hsdk_env_common_ctl.tun_freq = val;
++	return 0;
++}
++
++int do_core_entry(u32 core, u32 val)
++{
++	hsdk_env_per_cpu_ctl[core].entry = val;
++	return 0;
++}
++
++int do_icache_ena(u32 core, u32 val)
++{
++	hsdk_env_per_cpu_ctl[core].icache = val;
++	return 0;
++}
++
++int do_dcache_ena(u32 core, u32 val)
++{
++	hsdk_env_per_cpu_ctl[core].dcache = val;
++	return 0;
++}
++
++int do_aux_iccm(u32 core, u32 val)
++{
++	if (core_ccm_check(core, val))
++		return -EINVAL;
++
++	hsdk_env_per_cpu_ctl[core].iccm = val;
++	return 0;
++}
++
++int do_aux_dccm(u32 core, u32 val)
++{
++	if (core_ccm_check(core, val))
++		return -EINVAL;
++
++	hsdk_env_per_cpu_ctl[core].dccm = val;
++	return 0;
++}
++
++int do_aux_nvlimn(u32 core, u32 val)
++{
++	hsdk_env_common_ctl.nvlim = val;
++	return 0;
++}
++
++/* TODO: add default values */
++static const struct hsdk_env_map env_map[] = {
++	{ "core_mask",		false, true,	0x1, 0xF,		do_core_mask },
++	/* core_mask must be first table entry */
++	{ "cpu_freq",		false, false,	100, 1000,		do_cpu_freq },
++	{ "axi_freq",		false, false,	200, 800,		do_axi_freq },
++	{ "tun_freq",		false, false,	0, 150,			do_tun_freq },
++	{ "non_volatile_limit", false, true,	0x1, 0xF, 		do_aux_nvlimn },
++
++	{ "core_entry",		true, true,	0, U32_MAX,		do_core_entry },
++	{ "core_icache_ena",	true, true,	0, 1,			do_icache_ena },
++	{ "core_dcache_ena",	true, true,	0, 1,			do_dcache_ena },
++	{ "core_aux_iccm",	true, true,	0x1, VAL_NO_XCCM,	do_aux_iccm },
++	{ "core_aux_dccm",	true, true,	0x1, VAL_NO_XCCM,	do_aux_dccm },
++	{}
++};
++
++static int check_env_bound(u32 index, u32 val)
++{
++	if (val < env_map[index].min || val > env_map[index].max) {
++		pr_err("\'%s\' must be between %#x and %#x\n", env_map[index].env_name,
++			env_map[index].min, env_map[index].max);
++
++		return -EINVAL;
++	}
++
++	return 0;
++}
++
++static int check_env_core_specific(u32 env_index, u32 cpu_index)
++{
++	/* We assume if slave CPU[x] is enabled all of mandatory x CPU
++	 * environment variables must be set */
++	if (hsdk_env_per_cpu_ctl[cpu_index].used && env_map[env_index].mandatory) {
++		pr_err("CPU %u is used, but \'%s_%u\' is not defined\n",
++			cpu_index, env_map[env_index].env_name, cpu_index);
++		return -EINVAL;
++	}
++
++	return 0;
++}
++
++static int check_env_common(u32 env_index)
++{
++	if (env_map[env_index].mandatory) {
++		pr_err("Variable \'%s\' is mandatory, but it is not defined\n",
++			env_map[env_index].env_name);
++
++		return -EINVAL;
++	}
++
++	return 0;
++}
++
++/* TODO: refactor: split variable get and check */
++static int env_process(u32 index)
++{
++	u32 i, val;
++	char comand[MAX_CMD_LEN];
++
++	if (!env_map[index].core_specific) {
++		if (!env_get_yesno(env_map[index].env_name)) {
++			val = (u32)env_get_hex(env_map[index].env_name, 0);
++			if (check_env_bound(index, val))
++				return -EINVAL;
++
++			debug("ENV: %s = %#x\n", env_map[index].env_name, val);
++			if (env_map[index].func(0, val))
++				return -EINVAL;
++		} else {
++			/* Check if it is OK, that this variable isn't defined */
++			if (check_env_common(index))
++				return -EINVAL;
++		}
++
++		return 0;
++	}
++
++	/* process core specific variables */
++	for (i = 0; i < MAX_CPUS; i++) {
++		sprintf(comand, "%s_%u", env_map[index].env_name, i);
++		if (!env_get_yesno(comand)) {
++			val = (u32)env_get_hex(comand, 0);
++			if (check_env_bound(index, val))
++				return -EINVAL;
++
++			debug("ENV: %s: = %#x\n", comand, val);
++			if (env_map[index].func(i, val))
++				return -EINVAL;
++		} else {
++			/* Check if it is OK, that this variable isn't defined */
++			if (check_env_core_specific(index, i))
++				return -EINVAL;
++		}
++	}
++
++	return 0;
++}
++
++
++#define APT_SHIFT		28
++
++/* Bit values in IC_CTRL */
++#define IC_CTRL_CACHE_DISABLE	(1 << 0)
++
++/* Bit values in DC_CTRL */
++#define DC_CTRL_CACHE_DISABLE	(1 << 0)
++#define DC_CTRL_INV_MODE_FLUSH	(1 << 6)
++
++/* TODO: move this to "arch/arc/include/asm/arcregs.h" */
++#define AUX_NON_VOLATILE_LIMIT	0x5E
++#define ARC_REG_AUX_DCCM	0x18	/* DCCM Base Addr ARCv2 */
++#define ARC_REG_AUX_ICCM	0x208	/* ICCM Base Addr (ARCv2) */
++#define AUX_VOL			0x5E
++#define AUX_CACHE_LIMIT		0x5D
++
++#define AUX_IDENTITY		4
++
++static inline void nop_instr(void)
++{
++	__asm__ __volatile__("nop");
++}
++
++// TODO: add xCCM runtime check
++static void smp_init_slave_cpu_func(u32 core)
++{
++	unsigned int r;
++
++	/* ICCM move if exists */
++	if (hsdk_env_per_cpu_ctl[core].iccm != VAL_NO_XCCM) {
++		r = ARC_REG_AUX_ICCM;
++		write_aux_reg(r, hsdk_env_per_cpu_ctl[core].iccm << APT_SHIFT);
++	}
++
++	/* DCCM move if exists */
++	if (hsdk_env_per_cpu_ctl[core].dccm != VAL_NO_XCCM) {
++		r = ARC_REG_AUX_DCCM;
++		write_aux_reg(r, hsdk_env_per_cpu_ctl[core].dccm << APT_SHIFT);
++	}
++
++	/* i$ enable if required (it is disabled by default) */
++	if (hsdk_env_per_cpu_ctl[core].icache) {
++		r = ARC_AUX_IC_CTRL;
++		write_aux_reg(r, read_aux_reg(r) & ~IC_CTRL_CACHE_DISABLE);
++	}
++
++	/* d$ enable if required (it is disabled by default) */
++	if (hsdk_env_per_cpu_ctl[core].dcache) {
++		r = ARC_AUX_DC_CTRL;
++		write_aux_reg(r, read_aux_reg(r) & ~(DC_CTRL_CACHE_DISABLE | DC_CTRL_INV_MODE_FLUSH));
++	}
++}
++
++static void init_master_nvlim(void)
++{
++	u32 val = hsdk_env_common_ctl.nvlim << APT_SHIFT;
++
++	flush_dcache_all();
++	write_aux_reg(AUX_NON_VOLATILE_LIMIT, val);
++	write_aux_reg(AUX_CACHE_LIMIT, val);
++}
++
++// TODO: !! add my own implementation of flush_dcache_all, invalidate_icache_all
++// as current implementations depends on CONFIG_SYS_DCACHE_OFF and
++// CONFIG_SYS_ICACHE_OFF
++
++static void init_master_icache(void)
++{
++	unsigned int r;
++
++#ifndef CONFIG_SYS_ICACHE_OFF
++	/* enable if required, else - nothing to do */
++	if (hsdk_env_per_cpu_ctl[MASTER_CPU].icache) {
++		r = ARC_AUX_IC_CTRL;
++		write_aux_reg(r, read_aux_reg(r) & ~IC_CTRL_CACHE_DISABLE);
++	}
++#else
++	/* disable if required, else - nothing to do (we will invalidate i$
++	 * just before app launch) */
++	if (!hsdk_env_per_cpu_ctl[MASTER_CPU].icache) {
++		/* next code copied from board_hsdk.c */
++		/* instruction cache invalidate */
++		write_aux_reg(ARC_AUX_IC_IVIC, 0x00000001U);
++		/* HS Databook, 5.3.3.2: three NOP's must be inserted inbetween
++		 * invalidate and disable  */
++		nop_instr();
++		nop_instr();
++		nop_instr();
++		/* instruction cache disable */
++		write_aux_reg(ARC_AUX_IC_CTRL, 0x00000001U);
++	}
++#endif
++}
++
++static void init_master_dcache(void)
++{
++	unsigned int r;
++
++#ifndef CONFIG_SYS_ICACHE_OFF
++	/* enable if required, else - nothing to do */
++	if (hsdk_env_per_cpu_ctl[MASTER_CPU].dcache) {
++		r = ARC_AUX_DC_CTRL;
++		write_aux_reg(r, read_aux_reg(r) & ~(DC_CTRL_CACHE_DISABLE | DC_CTRL_INV_MODE_FLUSH));
++	}
++#else
++	/* disable if required, else - nothing to do (we will flush d$ and sl$
++	 * just before app launch) */
++	if (!hsdk_env_per_cpu_ctl[MASTER_CPU].dcache) {
++		/* next code copied from board_hsdk.c */
++		flush_dcache_all(); /* TODO: it is OK if we flush SL$ too? */
++		/* data cache ctrl: invalidate mode to: invalidate dc and flush
++		 * dirty entries */
++		write_aux_reg(ARC_AUX_DC_CTRL, 0x00000060U);
++		/* data cache invalidate */
++		write_aux_reg(ARC_AUX_DC_IVDC, 0x00000001U);
++		/* data cache disable */
++		write_aux_reg(ARC_AUX_DC_CTRL, 0x00000001U);
++	}
++#endif
++}
++
++static int cleanup_cache_before_go(void)
++{
++	flush_dcache_all();
++	invalidate_dcache_all();
++	invalidate_icache_all();
++
++	return 0;
++}
++
++/* ********************* SMP: START ********************* */
++
++#define ARCNUM_SHIFT	8
++
++static inline u32 get_this_cpu_id(void)
++{
++	u32 val = read_aux_reg(AUX_IDENTITY);
++
++//	val &= GENMASK(15, ARCNUM_SHIFT);
++
++	val &= 0xFF00;
++	val >>= ARCNUM_SHIFT;
++
++	return val;
++}
++
++#define	CREG_BASE	(ARC_PERIPHERAL_BASE + 0x1000)
++#define	CREG_PAE	(CREG_BASE + 0x180)
++#define	CREG_PAE_UPDATE	(CREG_BASE + 0x194)
++#define	CREG_CPU_START	(CREG_BASE + 0x400)
++#define	CPU_START_MASK	0xF
++
++static int cleanup_before_go(void)
++{
++	disable_interrupts();
++	cleanup_cache_before_go();
++
++	return 0;
++}
++
++static inline void this_cpu_halt(void)
++{
++	__asm__ __volatile__("flag  1\n");
++}
++
++static void smp_kick_cpu_x(u32 cpu_id)
++{
++	int cmd = readl((void __iomem *)CREG_CPU_START);
++
++	if (cpu_id > MAX_CPUS)
++		return;
++
++	cmd &= ~CPU_START_MASK;
++	cmd |= (1 << cpu_id);
++	writel(cmd, (void __iomem *)CREG_CPU_START);
++}
++
++static u32 prepare_cpu_ctart_reg(void)
++{
++	int cmd = readl((void __iomem *)CREG_CPU_START);
++
++	cmd &= ~CPU_START_MASK;
++
++	return cmd | hsdk_env_common_ctl.core_mask;
++}
++
++volatile u32 data_flag;
++volatile u32 stack_ptr;
++
++static inline void set_data_flag(void)
++{
++	__asm__ __volatile__(	"mov	r8,	%%sp\n"
++				"st	r8,	%0\n"
++	 			: "=m" (data_flag)
++				: /* no input */
++				: "memory");
++}
++
++/* flatten */
++__attribute__((naked, noreturn, flatten)) noinline void hsdk_core_init_f(void)
++{
++	__asm__ __volatile__(	"ld	r8,	%0\n"
++				"mov	%%sp,	r8\n"
++				"mov	%%fp,	%%sp\n"
++	 			: /* no output */
++				: "m" (stack_ptr)
++				: "memory");
++
++	smp_init_slave_cpu_func(get_this_cpu_id());
++
++	set_data_flag();
++	/* Make sure other cores see written value in memory */
++	flush_dcache_all();
++
++	/* Halt the processor untill the master kick us again */
++	this_cpu_halt();
++
++	nop_instr();
++	nop_instr();
++	nop_instr();
++
++	/* Run our program */
++	((void (*)(void))(hsdk_env_per_cpu_ctl[get_this_cpu_id()].entry))();
++
++	/* Something went terribly wrong */
++	while (true)
++		this_cpu_halt();
++}
++
++static void do_init_slave_cpu(u32 cpu_id)
++{
++	u32 timeout = 50000;
++
++	data_flag = 0;
++
++	/* Use global unic place for slave cpu stack */
++	/* TODO: optimize memory usage, now we have one unused aperture */
++	stack_ptr = (u32)(slave_stack + (64 * cpu_id));
++
++	/* TODO: remove useless debug's in do_init_slave_cpu */
++	debug("CPU %u: STACK: %x\n", cpu_id, stack_ptr);
++	debug("CPU %u: comm STACK: %p\n", cpu_id, slave_stack);
++	smp_set_core_boot_addr((unsigned long)hsdk_core_init_f, -1);
++
++	/* Make sure other cores see written value in memory */
++	flush_dcache_all();
++
++	smp_kick_cpu_x(cpu_id);
++
++	debug("CPU %u: FLAG0: %x\n", cpu_id, data_flag);
++	while (!data_flag && timeout)
++		timeout--;
++
++	/* We need to panic here as there is no option to halt slave cpu
++	 * (or check that slave cpu is halted) */
++	if (!timeout)
++		pr_err("CPU %u is not responding after init!\n", cpu_id);
++
++	debug("CPU %u: FLAG1: %x\n", cpu_id, data_flag);
++}
++
++static void do_init_slave_cpus(void)
++{
++	u32 i;
++
++	for (i = 1; i < MAX_CPUS; i++)
++		if (hsdk_env_per_cpu_ctl[i].used)
++			do_init_slave_cpu(i);
++}
++
++static void do_init_master_cpu(void)
++{
++	if (hsdk_env_per_cpu_ctl[MASTER_CPU].used) {
++		init_master_icache();
++		init_master_dcache();
++	}
++}
++
++/* ********************* SMP: END ********************* */
++
++static int check_master_cpu_id(void)
++{
++	if (get_this_cpu_id() == MASTER_CPU)
++		return 0;
++
++	pr_err("u-boot runs on non-master cpu with id: %u\n", get_this_cpu_id());
++
++	return -ENOENT;
++}
++
++static int do_hsdk_go(cmd_tbl_t *cmdtp, int flag, int argc, char * const argv[])
++{
++	u32 i, reg;
++	ulong rate;
++	int ret;
++
++	printf("HSDK: hsdk_go version: %s\n", HSDKGO_VERSION);
++
++	/* Check for 'halt' parameter. 'halt' = enter halt-mode just before
++	 * starting the application; can be used for debug */
++	if (argc > 1) {
++		hsdk_env_common_ctl.halt_on_boot = !strcmp(argv[1], "halt");
++		if (!hsdk_env_common_ctl.halt_on_boot) {
++			pr_err("Unrecognised parameter: \'%s\'\n", argv[1]);
++			return -EINVAL;
++		}
++	}
++
++	ret = check_master_cpu_id();
++	if (ret)
++		return ret;
++
++	for (i = 0; env_map[i].env_name; i++) {
++		ret = env_process(i);
++		if (ret)
++			return ret;
++	}
++
++	do_init_slave_cpus();
++
++	/* TODO: set frequency, not only read */
++	soc_clk_ctl("cpu-clk", &rate, false);
++	soc_clk_ctl("sys-clk", &rate, false);
++	soc_clk_ctl("ddr-clk", &rate, false);
++	soc_clk_ctl("tun-clk", &rate, false);
++
++	/* A multi-core ARC HS configuration always includes only one
++	 * AUX_NON_VOLATILE_LIMIT register, which is shared by all the cores. */
++	init_master_nvlim();
++
++	/* Prepare CREG_CPU_START for kicking chosen CPUs */
++	reg = prepare_cpu_ctart_reg();
++
++	do_init_master_cpu();
++
++	/* Cleanup caches, disable interrupts */
++	cleanup_before_go();
++
++	if (hsdk_env_common_ctl.halt_on_boot)
++		this_cpu_halt();
++
++	/* Kick chosen CPUs */
++	writel(reg, (void __iomem *)CREG_CPU_START);
++
++	if (hsdk_env_per_cpu_ctl[MASTER_CPU].used)
++		((void (*)(void))(hsdk_env_per_cpu_ctl[MASTER_CPU].entry))();
++	else
++		this_cpu_halt();
++
++	pr_err("u-boot still runs on cpu [%d]\n", get_this_cpu_id());
++
++	/* We will never return after executing our program if master cpu used
++	 * otherwise halt master cpu manually */
++	while (true)
++		this_cpu_halt();
++
++	return 0;
++}
++
++U_BOOT_CMD(
++	hsdk_go, 3, 0, do_hsdk_go,
++	"Synopsys HSDK specific command",
++	"hsdk_go                 - Boot stand-alone application on HSDK\n"
++);
+-- 
+2.11.0
+

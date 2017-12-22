@@ -1,0 +1,114 @@
+From 90f119b4dbbcd10fe890a6fbad3e0cf361c57182 Mon Sep 17 00:00:00 2001
+From: Eugeniy Paltsev <Eugeniy.Paltsev@synopsys.com>
+Date: Mon, 25 Sep 2017 19:04:54 +0300
+Subject: [PATCH 45/46] DW SPI: Get clock value from Device Tree
+
+Add option to set spi controller clock frequency via device tree
+using standard clock bindings.
+
+Define dw_spi_get_clk function as 'weak' as some targets
+(like SOCFPGA_GEN5 and SOCFPGA_ARRIA10) fon't use standard clock API
+and implement dw_spi_get_clk their own way in their clock manager.
+
+Get rid of clock_manager.h include as we don't use
+cm_get_spi_controller_clk_hz function anymore. (we use redefined
+dw_spi_get_clk in SOCFPGA clock managers instead)
+
+Signed-off-by: Eugeniy Paltsev <Eugeniy.Paltsev@synopsys.com>
+---
+ drivers/spi/designware_spi.c | 43 +++++++++++++++++++++++++++++++++++++++++--
+ 1 file changed, 41 insertions(+), 2 deletions(-)
+
+diff --git a/drivers/spi/designware_spi.c b/drivers/spi/designware_spi.c
+index 6cc4f51a1f..4830af883c 100644
+--- a/drivers/spi/designware_spi.c
++++ b/drivers/spi/designware_spi.c
+@@ -12,6 +12,7 @@
+ 
+ #include <asm-generic/gpio.h>
+ #include <common.h>
++#include <clk.h>
+ #include <dm.h>
+ #include <errno.h>
+ #include <malloc.h>
+@@ -19,7 +20,6 @@
+ #include <fdtdec.h>
+ #include <linux/compat.h>
+ #include <asm/io.h>
+-#include <asm/arch/clock_manager.h>
+ 
+ DECLARE_GLOBAL_DATA_PTR;
+ 
+@@ -95,6 +95,8 @@ struct dw_spi_priv {
+ 	void __iomem *regs;
+ 	unsigned int freq;		/* Default frequency */
+ 	unsigned int mode;
++	struct clk clk;
++	unsigned long bus_clk_rate;
+ 
+ 	struct gpio_desc cs_gpio;	/* External chip-select gpio */
+ 
+@@ -195,14 +197,51 @@ static void spi_hw_init(struct dw_spi_priv *priv)
+ 	debug("%s: fifo_len=%d\n", __func__, priv->fifo_len);
+ }
+ 
++/*
++ * We define dw_spi_get_clk function as 'weak' as some targets
++ * (like SOCFPGA_GEN5 and SOCFPGA_ARRIA10) fon't use standard clock API
++ * and implement dw_spi_get_clk their own way in their clock manager.
++ */
++__weak int dw_spi_get_clk(struct udevice *bus, ulong *rate)
++{
++	struct dw_spi_priv *priv = dev_get_priv(bus);
++	int ret;
++
++	ret = clk_get_by_index(bus, 0, &priv->clk);
++	if (ret)
++		return -EINVAL;
++
++	ret = clk_enable(&priv->clk);
++	if (ret && ret != -ENOSYS && ret != -ENOSYS && ret != -ENOTSUPP)
++		return ret;
++
++	*rate = clk_get_rate(&priv->clk);
++	if (!*rate) {
++		clk_disable(&priv->clk);
++		return -EINVAL;
++	}
++
++	debug("%s: get spi controller clk via device tree: %lu Hz\n",
++	      __func__, *rate);
++
++	clk_free(&priv->clk);
++
++	return 0;
++}
++
+ static int dw_spi_probe(struct udevice *bus)
+ {
+ 	struct dw_spi_platdata *plat = dev_get_platdata(bus);
+ 	struct dw_spi_priv *priv = dev_get_priv(bus);
++	int ret;
+ 
+ 	priv->regs = plat->regs;
+ 	priv->freq = plat->frequency;
+ 
++	ret = dw_spi_get_clk(bus, &priv->bus_clk_rate);
++	if (ret)
++		return ret;
++
+ 	/* Currently only bits_per_word == 8 supported */
+ 	priv->bits_per_word = 8;
+ 
+@@ -411,7 +450,7 @@ static int dw_spi_set_speed(struct udevice *bus, uint speed)
+ 	spi_enable_chip(priv, 0);
+ 
+ 	/* clk_div doesn't support odd number */
+-	clk_div = cm_get_spi_controller_clk_hz() / speed;
++	clk_div = priv->bus_clk_rate / speed;
+ 	clk_div = (clk_div + 1) & 0xfffe;
+ 	dw_write(priv, DW_SPI_BAUDR, clk_div);
+ 
+-- 
+2.11.0
+

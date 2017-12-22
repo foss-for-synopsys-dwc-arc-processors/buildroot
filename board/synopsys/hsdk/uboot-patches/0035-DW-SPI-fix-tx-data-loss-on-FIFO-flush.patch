@@ -1,0 +1,56 @@
+From 05ddd46833a89a8ee95c60394784cdf1ffd88358 Mon Sep 17 00:00:00 2001
+From: Eugeniy Paltsev <Eugeniy.Paltsev@synopsys.com>
+Date: Thu, 5 Oct 2017 18:28:50 +0300
+Subject: [PATCH 35/46] DW SPI: fix tx data loss on FIFO flush
+
+In current implementation if some data still exists in Tx FIFO it
+can be silently flushed, i.e. dropped on disabling of the controller,
+which happens when writing 0 to DW_SPI_SSIENR (it happens in the
+begining of new transfer)
+
+So add wait for current transmit operation to complete to be sure
+that current transmit operation is finished before new one.
+
+Signed-off-by: Eugeniy Paltsev <Eugeniy.Paltsev@synopsys.com>
+---
+ drivers/spi/designware_spi.c | 17 +++++++++++++++++
+ 1 file changed, 17 insertions(+)
+
+diff --git a/drivers/spi/designware_spi.c b/drivers/spi/designware_spi.c
+index 5aa507b2d8..391f77b21b 100644
+--- a/drivers/spi/designware_spi.c
++++ b/drivers/spi/designware_spi.c
+@@ -297,6 +297,7 @@ static int dw_spi_xfer(struct udevice *dev, unsigned int bitlen,
+ {
+ 	struct udevice *bus = dev->parent;
+ 	struct dw_spi_priv *priv = dev_get_priv(bus);
++	unsigned start;
+ 	const u8 *tx = dout;
+ 	u8 *rx = din;
+ 	int ret = 0;
+@@ -353,6 +354,22 @@ static int dw_spi_xfer(struct udevice *dev, unsigned int bitlen,
+ 	/* Start transfer in a polling loop */
+ 	ret = poll_transfer(priv);
+ 
++	/*
++	 * Wait for current transmit operation to complete.
++	 * Otherwise if some data still exists in Tx FIFO it can be
++	 * silently flushed, i.e. dropped on disabling of the controller,
++	 * which happens when writing 0 to DW_SPI_SSIENR which happens
++	 * in the begining of new transfer.
++	 */
++	start = get_timer(0);
++	while (!(dw_readl(priv, DW_SPI_SR) & SR_TF_EMPT) ||
++		(dw_readl(priv, DW_SPI_SR) & SR_BUSY)) {
++		if (get_timer(start) > RX_TIMEOUT) {
++			ret = -ETIMEDOUT;
++			break;
++		}
++	}
++
+ 	return ret;
+ }
+ 
+-- 
+2.11.0
+

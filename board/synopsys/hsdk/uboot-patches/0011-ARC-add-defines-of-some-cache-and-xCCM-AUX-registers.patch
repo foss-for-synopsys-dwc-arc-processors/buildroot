@@ -1,0 +1,30 @@
+From abd1219f94dee34cbb1209e951c0e81bbb282154 Mon Sep 17 00:00:00 2001
+From: Eugeniy Paltsev <Eugeniy.Paltsev@synopsys.com>
+Date: Tue, 28 Nov 2017 16:49:05 +0300
+Subject: [PATCH 11/46] ARC: add defines of some cache and xCCM AUX registers
+
+Signed-off-by: Eugeniy Paltsev <Eugeniy.Paltsev@synopsys.com>
+---
+ arch/arc/include/asm/arcregs.h | 6 ++++++
+ 1 file changed, 6 insertions(+)
+
+diff --git a/arch/arc/include/asm/arcregs.h b/arch/arc/include/asm/arcregs.h
+index 54a9b00d4c..09ac62a885 100644
+--- a/arch/arc/include/asm/arcregs.h
++++ b/arch/arc/include/asm/arcregs.h
+@@ -27,6 +27,12 @@
+ #define ARC_AUX_IC_PTAG		0x1E
+ #endif
+ #define ARC_BCR_IC_BUILD	0x77
++#define AUX_AUX_CACHE_LIMIT		0x5D
++#define ARC_AUX_NON_VOLATILE_LIMIT	0x5E
++
++/* ICCM and DCCM auxiliary registers */
++#define ARC_AUX_DCCM_BASE	0x18	/* DCCM Base Addr ARCv2 */
++#define ARC_AUX_ICCM_BASE	0x208	/* ICCM Base Addr ARCv2 */
+ 
+ /* Timer related auxiliary registers */
+ #define ARC_AUX_TIMER0_CNT	0x21	/* Timer 0 count */
+-- 
+2.11.0
+

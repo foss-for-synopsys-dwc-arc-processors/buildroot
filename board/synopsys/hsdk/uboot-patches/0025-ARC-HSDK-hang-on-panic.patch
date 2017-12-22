@@ -1,0 +1,25 @@
+From 139f2a5d0a98aedf4ea9a5d50bd2bf08ba5dcac8 Mon Sep 17 00:00:00 2001
+From: Eugeniy Paltsev <Eugeniy.Paltsev@synopsys.com>
+Date: Tue, 19 Dec 2017 14:05:32 +0300
+Subject: [PATCH 25/46] ARC: HSDK: hang on panic
+
+Hang instead of reset on panic as reset is not implemented
+---
+ include/configs/hsdk.h | 3 +++
+ 1 file changed, 3 insertions(+)
+
+diff --git a/include/configs/hsdk.h b/include/configs/hsdk.h
+index b0323e0919..687610896c 100644
+--- a/include/configs/hsdk.h
++++ b/include/configs/hsdk.h
+@@ -110,4 +110,7 @@
+ #define CONFIG_BOARD_EARLY_INIT_R
+ #define CONFIG_BOARD_LATE_INIT
+ 
++
++#define CONFIG_PANIC_HANG
++
+ #endif /* _CONFIG_HSDK_H_ */
+-- 
+2.11.0
+
