@@ -1,0 +1,57 @@
+From 002504c76b1023d16716cbd9f7d9906deee28009 Mon Sep 17 00:00:00 2001
+From: Eugeniy Paltsev <Eugeniy.Paltsev@synopsys.com>
+Date: Tue, 26 Dec 2017 21:12:53 +0300
+Subject: [PATCH 1/3] ARC: HSDK: hsdk-cmd: fix master CPU cache configuration
+
+Signed-off-by: Eugeniy Paltsev <Eugeniy.Paltsev@synopsys.com>
+---
+ board/synopsys/hsdk/hsdk-cmd.c | 14 +++++++-------
+ 1 file changed, 7 insertions(+), 7 deletions(-)
+
+diff --git a/board/synopsys/hsdk/hsdk-cmd.c b/board/synopsys/hsdk/hsdk-cmd.c
+index 5d8f456a80..5140eb2dd9 100644
+--- a/board/synopsys/hsdk/hsdk-cmd.c
++++ b/board/synopsys/hsdk/hsdk-cmd.c
+@@ -503,7 +503,7 @@ static void init_master_icache(void)
+ {
+ 	unsigned int r;
+ 
+-#ifndef CONFIG_SYS_ICACHE_OFF
++#ifdef CONFIG_SYS_ICACHE_OFF
+ 	/* enable if required, else - nothing to do */
+ 	if (env_common.icache.val) {
+ 		r = ARC_AUX_IC_CTRL;
+@@ -531,7 +531,7 @@ static void init_master_dcache(void)
+ {
+ 	unsigned int r;
+ 
+-#ifndef CONFIG_SYS_ICACHE_OFF
++#ifdef CONFIG_SYS_ICACHE_OFF
+ 	/* enable if required, else - nothing to do */
+ 	if (env_common.dcache.val) {
+ 		r = ARC_AUX_DC_CTRL;
+@@ -700,16 +700,16 @@ static void do_init_slave_cpus(void)
+ 	u32 i;
+ 
+ 	for (i = 1; i < NR_CPUS; i++)
+-		if (env_core.used[i])
++		if (is_cpu_used(i))
+ 			do_init_slave_cpu(i);
+ }
+ 
+ static void do_init_master_cpu(void)
+ {
+-	if (env_core.used[MASTER_CPU]) {
+-		init_master_icache();
+-		init_master_dcache();
+-	}
++	/* Setup master caches even if master isn't used as we want to use
++	 * same cache configuration on all running CPUs */
++	init_master_icache();
++	init_master_dcache();
+ }
+ 
+ enum hsdk_axi_masters {
+-- 
+2.11.0
+

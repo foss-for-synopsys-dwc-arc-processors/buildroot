@@ -1,0 +1,45 @@
+From 697136ddf89c9c2d176ffdea55cd029e7717ac06 Mon Sep 17 00:00:00 2001
+From: Eugeniy Paltsev <Eugeniy.Paltsev@synopsys.com>
+Date: Tue, 26 Dec 2017 21:13:51 +0300
+Subject: [PATCH 2/3] ARC: HSDK: hsdk-cmd: get rid of env_core.used
+
+Signed-off-by: Eugeniy Paltsev <Eugeniy.Paltsev@synopsys.com>
+---
+ board/synopsys/hsdk/hsdk-cmd.c | 7 +------
+ 1 file changed, 1 insertion(+), 6 deletions(-)
+
+diff --git a/board/synopsys/hsdk/hsdk-cmd.c b/board/synopsys/hsdk/hsdk-cmd.c
+index 5140eb2dd9..f2b2dfe252 100644
+--- a/board/synopsys/hsdk/hsdk-cmd.c
++++ b/board/synopsys/hsdk/hsdk-cmd.c
+@@ -50,7 +50,6 @@ typedef struct {
+ } u32_env;
+ 
+ struct hsdk_env_core_ctl {
+-	bool used[NR_CPUS];
+ 	u32_env entry[NR_CPUS];
+ 	u32_env iccm[NR_CPUS];
+ 	u32_env dccm[NR_CPUS];
+@@ -891,10 +890,6 @@ static int prepare_cpus(void)
+ 	if (ret)
+ 		return ret;
+ 
+-	for (i = 0; i < NR_CPUS; i++) {
+-		env_core.used[i] = is_cpu_used(i);
+-	}
+-
+ 	printf("CPU start mask is %#x\n", env_common.core_mask.val);
+ 
+ 	do_init_slave_cpus();
+@@ -921,7 +916,7 @@ static int hsdk_go_run(u32 cpu_start_reg)
+ 	/* Kick chosen slave CPUs */
+ 	writel(cpu_start_reg, (void __iomem *)CREG_CPU_START);
+ 
+-	if (env_core.used[MASTER_CPU])
++	if (is_cpu_used(MASTER_CPU))
+ 		((void (*)(void))(env_core.entry[MASTER_CPU].val))();
+ 	else
+ 		halt_this_cpu();
+-- 
+2.11.0
+
