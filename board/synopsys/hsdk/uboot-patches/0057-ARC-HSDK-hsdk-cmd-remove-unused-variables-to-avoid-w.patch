@@ -1,0 +1,48 @@
+From 7b6a6451a1ee1552a8becb27e47f375708c8004f Mon Sep 17 00:00:00 2001
+From: Eugeniy Paltsev <Eugeniy.Paltsev@synopsys.com>
+Date: Tue, 9 Jan 2018 20:22:07 +0300
+Subject: [PATCH 57/59] ARC: HSDK: hsdk cmd: remove unused variables to avoid
+ warnings
+
+Signed-off-by: Eugeniy Paltsev <Eugeniy.Paltsev@synopsys.com>
+---
+ board/synopsys/hsdk/hsdk-cmd.c | 5 ++---
+ 1 file changed, 2 insertions(+), 3 deletions(-)
+
+diff --git a/board/synopsys/hsdk/hsdk-cmd.c b/board/synopsys/hsdk/hsdk-cmd.c
+index eaea34f812..6000d9b624 100644
+--- a/board/synopsys/hsdk/hsdk-cmd.c
++++ b/board/synopsys/hsdk/hsdk-cmd.c
+@@ -508,9 +508,9 @@ static void init_claster_nvlim(void)
+ 
+ static void init_master_icache(void)
+ {
++#ifdef CONFIG_SYS_ICACHE_OFF
+ 	unsigned int r;
+ 
+-#ifdef CONFIG_SYS_ICACHE_OFF
+ 	/* enable if required, else - nothing to do */
+ 	if (env_common.icache.val) {
+ 		r = ARC_AUX_IC_CTRL;
+@@ -536,9 +536,9 @@ static void init_master_icache(void)
+ 
+ static void init_master_dcache(void)
+ {
++#ifdef CONFIG_SYS_ICACHE_OFF
+ 	unsigned int r;
+ 
+-#ifdef CONFIG_SYS_ICACHE_OFF
+ 	/* enable if required, else - nothing to do */
+ 	if (env_common.dcache.val) {
+ 		r = ARC_AUX_DC_CTRL;
+@@ -887,7 +887,6 @@ static int check_master_cpu_id(void)
+ 
+ static int prepare_cpus(void)
+ {
+-	u32 i;
+ 	int ret;
+ 
+ 	ret = check_master_cpu_id();
+-- 
+2.11.0
+
