@@ -1,0 +1,44 @@
+This is useful to make sure no stale data exists in caches after bootloaders.
+The worst thing could be some lines of cache were locked in a bootloader
+for example during DDR recalibration and never unlocked. This may lead
+to really unpredictable issues later down the line.
+
+Signed-off-by: Eugeniy Paltsev <Eugeniy.Paltsev@synopsys.com>
+---
+ arch/arc/kernel/head.S | 14 ++++++++++++++
+ 1 file changed, 14 insertions(+)
+
+diff --git a/arch/arc/kernel/head.S b/arch/arc/kernel/head.S
+index 8b90d25..e16b007 100644
+--- a/arch/arc/kernel/head.S
++++ b/arch/arc/kernel/head.S
+@@ -34,6 +34,13 @@
+ #endif
+        sr      r5, [ARC_REG_IC_CTRL]
+ 
++       ; Invalidate entire I$
++       mov     r5, 1
++       sr      r5, [ARC_REG_IC_IVIC]
++       nop
++       nop
++       nop
++
+ 1:
+        lr      r5, [ARC_REG_DC_BCR]
+        breq    r5, 0, 1f               ; D$ doesn't exist
+@@ -46,6 +53,13 @@
+ #endif
+        sr      r5, [ARC_REG_DC_CTRL]
+ 
++       ; Invalidate entire D$
++       mov     r5, 1
++       sr      r5, [ARC_REG_DC_IVDC]
++       nop
++       nop
++       nop
++
+ 1:
+ .endm
+ 
+-- 
+2.9.3
