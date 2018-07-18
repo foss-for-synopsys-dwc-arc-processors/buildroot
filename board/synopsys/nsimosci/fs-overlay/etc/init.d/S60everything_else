@@ -1,0 +1,24 @@
+start() {
+	printf "Starting everything else: "
+	ifconfig eth0 192.168.218.2 up
+	inetd
+	[ $? = 0 ] && echo "OK" || echo "FAIL"
+}
+
+stop() {
+	printf "Stopping nothing.\n"
+}
+
+case "$1" in
+  start)
+	start
+	;;
+  stop)
+	stop
+	;;
+  *)
+	echo "Usage: $0 {start|stop}"
+	exit 1
+esac
+
+exit $?
