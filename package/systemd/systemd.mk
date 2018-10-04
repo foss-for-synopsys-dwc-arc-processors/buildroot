@@ -40,7 +40,10 @@ SYSTEMD_CONF_OPTS += \
 	-Dumount-path=/usr/bin/umount \
 	-Dnobody-group=nogroup
 
+SYSTEMD_CFLAGS = $(TARGET_CFLAGS) -flto
 # disable unsupported features for non-glibc toolchains
+
+SYSTEMD_CONF_ENV = CFLAGS="$(SYSTEMD_CFLAGS)" 
 ifeq ($(BR2_TOOLCHAIN_USES_GLIBC),y)
 SYSTEMD_CONF_OPTS += \
 	-Didn=true \
