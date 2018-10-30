@@ -31,6 +31,8 @@ endif
 GLIBC_SITE = $(call github,bminor,glibc,$(GLIBC_VERSION))
 endif
 
+BR_NO_CHECK_HASH_FOR += glibc-$(GLIBC_VERSION).tar.gz
+
 GLIBC_LICENSE = GPL-2.0+ (programs), LGPL-2.1+, BSD-3-Clause, MIT (library)
 GLIBC_LICENSE_FILES = COPYING COPYING.LIB LICENSES
 
