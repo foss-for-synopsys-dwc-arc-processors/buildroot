@@ -63,16 +63,6 @@ define HOST_GCC_APPLY_PATCHES
 	$(HOST_GCC_APPLY_POWERPC_PATCH)
 endef
 
-HOST_GCC_EXCLUDES = \
-	libjava/* libgo/* \
-	gcc/testsuite/* libstdc++-v3/testsuite/*
-
-define HOST_GCC_FAKE_TESTSUITE
-	mkdir -p $(@D)/libstdc++-v3/testsuite/
-	echo "all:" > $(@D)/libstdc++-v3/testsuite/Makefile.in
-	echo "install:" >> $(@D)/libstdc++-v3/testsuite/Makefile.in
-endef
-
 #
 # Create 'build' directory and configure symlink
 #
