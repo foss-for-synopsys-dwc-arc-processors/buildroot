@@ -20,6 +20,8 @@ GLIBC_VERSION = glibc-2.28-18-g2339d6a55eb7a7e040ae888e906adc49eeb59eab
 GLIBC_SITE = $(call github,bminor,glibc,$(GLIBC_VERSION))
 endif
 
+BR_NO_CHECK_HASH_FOR += glibc-$(GLIBC_VERSION).tar.gz
+
 GLIBC_LICENSE = GPL-2.0+ (programs), LGPL-2.1+, BSD-3-Clause, MIT (library)
 GLIBC_LICENSE_FILES = COPYING COPYING.LIB LICENSES
 

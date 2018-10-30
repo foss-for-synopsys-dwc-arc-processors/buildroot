@@ -27,6 +27,8 @@ GCC_SOURCE = gcc-$(GCC_VERSION).tar.xz
 endif
 endif
 
+BR_NO_CHECK_HASH_FOR += $(GCC_SOURCE)
+
 #
 # Xtensa special hook
 #
