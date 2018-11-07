@@ -1,0 +1,10 @@
+ff --git a/scripts/cross-test-ssh.sh b/scripts/cross-test-ssh.sh
+index 400ef7d595f6..93582f4afa91 100755
+--- a/scripts/cross-test-ssh.sh
++++ b/scripts/cross-test-ssh.sh
+@@ -132,4 +132,4 @@ fi
+ # so we need to re-quote the whole command to ensure it appears as
+ # the sole argument of the '-c' option.
+ full_command="$(bourne_quote "${command}")"
+-$ssh "$host" /bin/sh -c "$full_command"
++timeout --foreground 20m $ssh "$host" /bin/sh -c "$full_command"
