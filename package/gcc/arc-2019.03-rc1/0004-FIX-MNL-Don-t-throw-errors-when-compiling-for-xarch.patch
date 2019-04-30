@@ -1,0 +1,28 @@
+From ad177abf331128501b92e946e532ac0361321628 Mon Sep 17 00:00:00 2001
+From: Claudiu Zissulescu <claziss@gmail.com>
+Date: Tue, 2 Apr 2019 16:43:15 +0300
+Subject: [PATCH 4/7] [FIX][MNL] Don't throw errors when compiling for xarch
+
+---
+ gcc/gimple-ssa-store-merging.c | 4 ++++
+ 1 file changed, 4 insertions(+)
+
+diff --git a/gcc/gimple-ssa-store-merging.c b/gcc/gimple-ssa-store-merging.c
+index 9002bfbbad0..dbcd78ed90a 100644
+--- a/gcc/gimple-ssa-store-merging.c
++++ b/gcc/gimple-ssa-store-merging.c
+@@ -161,7 +161,11 @@
+ #include "selftest.h"
+ 
+ /* The maximum size (in bits) of the stores this pass should generate.  */
++#ifdef TARGET_LL64
+ #define MAX_STORE_BITSIZE (TARGET_LL64 ? 2 * BITS_PER_WORD : BITS_PER_WORD)
++#else
++#define MAX_STORE_BITSIZE (BITS_PER_WORD)
++#endif
+ #define MAX_STORE_BYTES (MAX_STORE_BITSIZE / BITS_PER_UNIT)
+ 
+ /* Limit to bound the number of aliasing checks for loads with the same
+-- 
+2.16.2
+

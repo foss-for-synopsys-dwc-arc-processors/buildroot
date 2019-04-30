@@ -1,0 +1,85 @@
+From 62f2c9d66765c2dbfc0ec895e1242f36bac63cf3 Mon Sep 17 00:00:00 2001
+From: Claudiu Zissulescu <claziss@gmail.com>
+Date: Tue, 2 Apr 2019 15:28:41 +0300
+Subject: [PATCH 3/7] [ARC] Cleanup TUNE variants
+
+Cleanup TUNE variants.
+
+gcc/
+xxxx-xx-xx  Claudiu Zissulescu  <claziss@synopsys.com>
+
+	* config/arc/arc.c (arc_sched_issue_rate): Use correct enum.
+	* config/arc/arc.md (tune): Update tune attribute, and use correct
+	enums.
+	(tune_dspmpy): Likewise.
+---
+ gcc/config/arc/arc.c  |  4 ++--
+ gcc/config/arc/arc.md | 22 ++++++++++------------
+ 2 files changed, 12 insertions(+), 14 deletions(-)
+
+diff --git a/gcc/config/arc/arc.c b/gcc/config/arc/arc.c
+index 83664d4d64f..b428bfbed63 100644
+--- a/gcc/config/arc/arc.c
++++ b/gcc/config/arc/arc.c
+@@ -490,8 +490,8 @@ arc_sched_issue_rate (void)
+ {
+   switch (arc_tune)
+     {
+-    case TUNE_ARCHS4X:
+-    case TUNE_ARCHS4XD:
++    case ARC_TUNE_ARCHS4X:
++    case ARC_TUNE_ARCHS4XD:
+       return 3;
+     default:
+       break;
+diff --git a/gcc/config/arc/arc.md b/gcc/config/arc/arc.md
+index 241506ea785..42a24e16ff4 100644
+--- a/gcc/config/arc/arc.md
++++ b/gcc/config/arc/arc.md
+@@ -621,22 +621,20 @@
+ ;;   is made that makes conditional execution required.
+ 
+ (define_attr "tune" "none,arc600,arc7xx,arc700_4_2_std,arc700_4_2_xmac, \
+-core_3, archs4x, archs4xd, archs4xd_slow"
++archs4x, archs4xd"
+   (const
+-   (cond [(symbol_ref "arc_tune == TUNE_ARC600")
++   (cond [(symbol_ref "arc_tune == ARC_TUNE_ARC600")
+ 	  (const_string "arc600")
+ 	  (symbol_ref "arc_tune == ARC_TUNE_ARC7XX")
+ 	  (const_string "arc7xx")
+-	  (symbol_ref "arc_tune == TUNE_ARC700_4_2_STD")
++	  (symbol_ref "arc_tune == ARC_TUNE_ARC700_4_2_STD")
+ 	  (const_string "arc700_4_2_std")
+-	  (symbol_ref "arc_tune == TUNE_ARC700_4_2_XMAC")
++	  (symbol_ref "arc_tune == ARC_TUNE_ARC700_4_2_XMAC")
+ 	  (const_string "arc700_4_2_xmac")
+-	  (symbol_ref "arc_tune == ARC_TUNE_CORE_3")
+-	  (const_string "core_3")
+-	  (symbol_ref "arc_tune == TUNE_ARCHS4X")
++	  (symbol_ref "arc_tune == ARC_TUNE_ARCHS4X")
+ 	  (const_string "archs4x")
+-	  (ior (symbol_ref "arc_tune == TUNE_ARCHS4XD")
+-	       (symbol_ref "arc_tune == TUNE_ARCHS4XD_SLOW"))
++	  (ior (symbol_ref "arc_tune == ARC_TUNE_ARCHS4XD")
++	       (symbol_ref "arc_tune == ARC_TUNE_ARCHS4XD_SLOW"))
+ 	  (const_string "archs4xd")]
+ 	 (const_string "none"))))
+ 
+@@ -647,10 +645,10 @@ core_3, archs4x, archs4xd, archs4xd_slow"
+ 
+ (define_attr "tune_dspmpy" "none, slow, fast"
+   (const
+-  (cond [(ior (symbol_ref "arc_tune == TUNE_ARCHS4X")
+-	      (symbol_ref "arc_tune == TUNE_ARCHS4XD"))
++  (cond [(ior (symbol_ref "arc_tune == ARC_TUNE_ARCHS4X")
++	      (symbol_ref "arc_tune == ARC_TUNE_ARCHS4XD"))
+ 	 (const_string "fast")
+-	 (symbol_ref "arc_tune == TUNE_ARCHS4XD_SLOW")
++	 (symbol_ref "arc_tune == ARC_TUNE_ARCHS4XD_SLOW")
+ 	 (const_string "slow")]
+ 	(const_string "none"))))
+ 
+-- 
+2.16.2
+
