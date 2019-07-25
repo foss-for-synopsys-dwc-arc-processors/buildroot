@@ -1,0 +1,18 @@
+#!/bin/bash -eu
+
+if [[ -z ${1:-} ]]; then
+	echo "Please, specify version of buildroot external tree"
+	echo "Usage: $0 external_tree_version"
+	exit 1
+fi
+
+if [[ ! -d buildroot-synopsys-external-tree ]]; then
+    git clone git@gitsnps.internal.synopsys.com:arc_oss/verification_automation/buildroot-synopsys-external-tree.git
+fi
+
+pushd buildroot-synopsys-external-tree
+git fetch --all
+git checkout $1
+popd
+
+make BR2_EXTERNAL=buildroot-synopsys-external-tree clean
