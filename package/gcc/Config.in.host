@@ -81,7 +81,8 @@ config BR2_GCC_VERSION
 	default "11.4.0"    if BR2_GCC_VERSION_11_X
 	default "12.3.0"    if BR2_GCC_VERSION_12_X
 	default "13.2.0"    if BR2_GCC_VERSION_13_X
-	default "arc-2020.09-release" if BR2_GCC_VERSION_ARC
+	default "arc-2020.09-release" if BR2_GCC_VERSION_ARC && !BR2_arc64 && !BR2_arc32
+	default "arc64"     if BR2_GCC_VERSION_ARC && (BR2_arc64 || BR2_arc32)
 
 config BR2_EXTRA_GCC_CONFIG_OPTIONS
 	string "Additional gcc options"
