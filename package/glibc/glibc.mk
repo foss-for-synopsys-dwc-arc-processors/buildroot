@@ -4,6 +4,10 @@
 #
 ################################################################################
 
+ifeq ($(BR2_arc64)$(BR2_arc32),y)
+GLIBC_VERSION =  arc64
+GLIBC_SITE = $(call github,foss-for-synopsys-dwc-arc-processors,glibc,$(GLIBC_VERSION))
+else
 # Generate version string using:
 #   git describe --match 'glibc-*' --abbrev=40 origin/release/MAJOR.MINOR/master | cut -d '-' -f 2-
 # When updating the version, please also update localedef
@@ -15,6 +19,8 @@ GLIBC_VERSION = 2.37-43-g94ef70136587c40a357f775677997c753b3de56c
 # *NEVER* decide on a version string by looking at the mirror.
 # Then check that the mirror has been synced already (happens once a day.)
 GLIBC_SITE = $(call github,bminor,glibc,$(GLIBC_VERSION))
+endif
+BR_NO_CHECK_HASH_FOR += glibc-$(GLIBC_VERSION).tar.gz
 
 GLIBC_LICENSE = GPL-2.0+ (programs), LGPL-2.1+, BSD-3-Clause, MIT (library)
 GLIBC_LICENSE_FILES = COPYING COPYING.LIB LICENSES
