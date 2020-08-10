@@ -44,16 +44,22 @@ config BR2_archs4x_rel31
 	   - Dual- and quad multiply and MC oprations
 	   - Double-precision FPU
 
+config BR2_arc64
+	bool "64-bit ARC HS68"
+	select BR2_ARCH_IS_64
+	help
+	   64-bit ARC HS6x processor
 endchoice
 
 # Choice of atomic instructions presence
 config BR2_ARC_ATOMIC_EXT
 	bool "Atomic extension (LLOCK/SCOND instructions)"
-	default y if BR2_arc770d || BR2_archs38 || BR2_archs38_64mpy || BR2_archs38_full || BR2_archs4x_rel31
+	default y if BR2_arc770d || BR2_archs38 || BR2_archs38_64mpy || BR2_archs38_full || BR2_archs4x_rel31 || BR2_arc64
 
 config BR2_ARCH
-	default "arc"	if BR2_arcle
-	default "arceb"	if BR2_arceb
+	default "arc"	if BR2_arcle && !BR2_ARCH_IS_64
+	default "arceb"	if BR2_arceb && !BR2_ARCH_IS_64
+	default "arc64" if BR2_ARCH_IS_64
 
 config BR2_arc
 	bool
@@ -64,6 +70,7 @@ config BR2_ENDIAN
 	default "BIG"	 if BR2_arceb
 
 config BR2_GCC_TARGET_CPU
+	depends on !BR2_arc64
 	default "arc700" if BR2_arc750d
 	default "arc700" if BR2_arc770d
 	default "archs"	 if BR2_archs38
@@ -74,6 +81,7 @@ config BR2_GCC_TARGET_CPU
 config BR2_READELF_ARCH_NAME
 	default "ARCompact"	if BR2_arc750d || BR2_arc770d
 	default "ARCv2"		if BR2_archs38 || BR2_archs38_64mpy || BR2_archs38_full || BR2_archs4x_rel31
+	default "ARCv3_64"	if BR2_arc64
 
 choice
 	prompt "MMU Page Size"
