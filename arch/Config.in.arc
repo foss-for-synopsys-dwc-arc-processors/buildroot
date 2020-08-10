@@ -49,7 +49,45 @@ config BR2_archs4x
 	   - Dual and Quad multiply and MAC operations
 	   - Double-precision FPU
 
+config BR2_arc32
+	bool "ARC HS58 32-bit"
+	help
+	   ARC HS5x processor 32-bit
+
+config BR2_arc64
+	bool "ARC HS68 64-bit"
+	select BR2_ARCH_IS_64
+	help
+	   ARC HS6x processor 64-bit
+
 endchoice
+
+if BR2_arc32 || BR2_arc64
+
+choice
+	prompt "Floating-Point Unit configuration"
+
+# GCC for ARCv3 does not support -msoft-float issued by Buildroot's toolchain
+# wrapper. By default GCC assumes soft-float. Just do not select BR2_SOFT_FLOAT
+# when BR2_ARCV3_SOFT_FLOAT is chosen.
+config BR2_ARCV3_SOFT_FLOAT
+	bool "Soft float"
+	help
+	  This option uses software emulated floating point code for ARC
+	  cores with Floating-Point Unit not configured.
+
+# Hard Floating-Point Unit configuration is yet supported only for Synopsys
+# ARCv3 64-bit targets and only for glibc and only for double-precision FPU.
+config BR2_ARCV3_HARD_FLOAT_DOUBLE
+	bool "Floating-Point Unit (double-precision)"
+	depends on BR2_TOOLCHAIN_USES_GLIBC && BR2_arc64
+	help
+	  This option uses hardware Floating-Point Unit with double-precision in
+	  ARCv3 ISA based ARC cores.
+
+endchoice
+
+endif
 
 # Choice of atomic instructions presence
 config BR2_ARC_ATOMIC_EXT
@@ -57,10 +95,13 @@ config BR2_ARC_ATOMIC_EXT
 	default y if BR2_arc770d
 	default y if BR2_archs38 || BR2_archs38_64mpy || BR2_archs38_full
 	default y if BR2_archs4x_rel31 || BR2_archs4x
+	default y if BR2_arc32 || BR2_arc64
 
 config BR2_ARCH
-	default "arc"	if BR2_arcle
-	default "arceb"	if BR2_arceb
+	default "arc"	if BR2_arcle && !BR2_arc64 && !BR2_arc32
+	default "arceb"	if BR2_arceb && !BR2_arc64 && !BR2_arc32
+	default "arc32" if BR2_arc32
+	default "arc64" if BR2_arc64
 
 config BR2_NORMALIZED_ARCH
 	default "arc"
@@ -74,6 +115,7 @@ config BR2_ENDIAN
 	default "BIG"	 if BR2_arceb
 
 config BR2_GCC_TARGET_CPU
+	depends on !BR2_arc32 && !BR2_arc64
 	default "arc700" if BR2_arc750d
 	default "arc700" if BR2_arc770d
 	default "archs"	 if BR2_archs38
@@ -82,13 +124,19 @@ config BR2_GCC_TARGET_CPU
 	default "hs4x_rel31"	 if BR2_archs4x_rel31
 	default "hs4x"	 if BR2_archs4x
 
+config BR2_GCC_TARGET_FPU
+	default "fpud"   if BR2_ARCV3_HARD_FLOAT_DOUBLE
+
 config BR2_READELF_ARCH_NAME
 	default "ARCompact"	if BR2_arc750d || BR2_arc770d
 	default "ARCv2"		if BR2_archs38 || BR2_archs38_64mpy || BR2_archs38_full
 	default "ARCv2"		if BR2_archs4x_rel31 || BR2_archs4x
+	default "Synopsys ARCv3 32-bit processor"	if BR2_arc32
+	default "Synopsys ARCv3 64-bit processor"	if BR2_arc64
 
 choice
 	prompt "MMU Page Size"
+	default BR2_ARC_PAGE_SIZE_4K	if BR2_arc32 || BR2_arc64
 	default BR2_ARC_PAGE_SIZE_8K
 	help
 	  MMU starting from version 3 (found in ARC 770) and now
@@ -116,6 +164,10 @@ config BR2_ARC_PAGE_SIZE_8K
 config BR2_ARC_PAGE_SIZE_16K
 	bool "16KB"
 	depends on !BR2_arc750d
+
+config BR2_ARC_PAGE_SIZE_64K
+	bool "64KB"
+	depends on BR2_arc64
 
 endchoice
 
