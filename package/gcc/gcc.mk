@@ -21,6 +21,8 @@ GCC_SITE = $(BR2_GNU_MIRROR:/=)/gcc/gcc-$(GCC_VERSION)
 GCC_SOURCE = gcc-$(GCC_VERSION).tar.xz
 endif
 
+BR_NO_CHECK_HASH_FOR += $(GCC_SOURCE)
+
 #
 # Xtensa special hook
 #
