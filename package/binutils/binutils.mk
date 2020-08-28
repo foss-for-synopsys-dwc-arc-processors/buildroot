@@ -9,13 +9,23 @@
 BINUTILS_VERSION = $(call qstrip,$(BR2_BINUTILS_VERSION))
 ifeq ($(BINUTILS_VERSION),)
 ifeq ($(BR2_arc),y)
+ifeq ($(BR2_arc64),y)
+BINUTILS_VERSION = arc64
+else
 BINUTILS_VERSION = arc-2020.09-release
+endif
 else
 BINUTILS_VERSION = 2.36.1
 endif
 endif # BINUTILS_VERSION
 
 ifeq ($(BINUTILS_VERSION),arc-2020.09-release)
+BINUTILS_SITE = $(call github,foss-for-synopsys-dwc-arc-processors,binutils-gdb,$(BINUTILS_VERSION))
+BINUTILS_SOURCE = binutils-gdb-$(BINUTILS_VERSION).tar.gz
+BINUTILS_FROM_GIT = y
+endif
+
+ifeq ($(BINUTILS_VERSION),arc64)
 BINUTILS_SITE = $(call github,foss-for-synopsys-dwc-arc-processors,binutils-gdb,$(BINUTILS_VERSION))
 BINUTILS_SOURCE = binutils-gdb-$(BINUTILS_VERSION).tar.gz
 BINUTILS_FROM_GIT = y
@@ -36,6 +46,8 @@ BINUTILS_MAKE_OPTS = LIBS=$(TARGET_NLS_LIBS)
 BINUTILS_LICENSE = GPL-3.0+, libiberty LGPL-2.1+
 BINUTILS_LICENSE_FILES = COPYING3 COPYING.LIB
 BINUTILS_CPE_ID_VENDOR = gnu
+
+BR_NO_CHECK_HASH_FOR += $(BINUTILS_SOURCE)
 
 ifeq ($(BINUTILS_FROM_GIT),y)
 BINUTILS_DEPENDENCIES += host-flex host-bison

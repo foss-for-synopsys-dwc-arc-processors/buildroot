@@ -50,7 +50,8 @@ endchoice
 
 config BR2_BINUTILS_VERSION
 	string
-	default "arc-2020.09-release"	if BR2_BINUTILS_VERSION_ARC
+	default "arc-2020.09-release"	if BR2_BINUTILS_VERSION_ARC && !BR2_arc64
+	default "arc64"		if BR2_BINUTILS_VERSION_ARC && BR2_arc64
 	default "c66d8bbcebfddf713b2b436e1b135e6b125a55a5" if BR2_BINUTILS_VERSION_CSKY
 	default "2.32"		if BR2_BINUTILS_VERSION_2_32_X
 	default "2.35.2"	if BR2_BINUTILS_VERSION_2_35_X
