@@ -4,10 +4,8 @@
 #
 ################################################################################
 
-LIBFFI_VERSION = 3.3
-LIBFFI_SITE = $(call github,libffi,libffi,v$(LIBFFI_VERSION))
-LIBFFI_CPE_ID_VERSION = 3.3
-LIBFFI_CPE_ID_VERSION_MINOR = rc0
+LIBFFI_VERSION = 73acfaf8cfd445e9d44b40de8a07d06d8be71e1f
+LIBFFI_SITE = $(call github,foss-for-synopsys-dwc-arc-processors,libffi,$(LIBFFI_VERSION))
 LIBFFI_LICENSE = MIT
 LIBFFI_LICENSE_FILES = LICENSE
 LIBFFI_INSTALL_STAGING = YES
