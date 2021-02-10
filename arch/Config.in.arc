@@ -85,6 +85,7 @@ config BR2_READELF_ARCH_NAME
 
 choice
 	prompt "MMU Page Size"
+	default BR2_ARC_PAGE_SIZE_4K	if BR2_arc64
 	default BR2_ARC_PAGE_SIZE_8K
 	help
 	  MMU starting from version 3 (found in ARC 770) and now
@@ -101,7 +102,7 @@ choice
 
 config BR2_ARC_PAGE_SIZE_4K
 	bool "4KB"
-	depends on BR2_arc770d || BR2_archs38 || BR2_archs38_64mpy || BR2_archs38_full || BR2_archs4x_rel31
+	depends on BR2_arc770d || BR2_archs38 || BR2_archs38_64mpy || BR2_archs38_full || BR2_archs4x_rel31 || BR2_arc64
 
 config BR2_ARC_PAGE_SIZE_8K
 	bool "8KB"
@@ -111,7 +112,7 @@ config BR2_ARC_PAGE_SIZE_8K
 
 config BR2_ARC_PAGE_SIZE_16K
 	bool "16KB"
-	depends on BR2_arc770d || BR2_archs38 || BR2_archs38_64mpy || BR2_archs38_full || BR2_archs4x_rel31
+	depends on BR2_arc770d || BR2_archs38 || BR2_archs38_64mpy || BR2_archs38_full || BR2_archs4x_rel31 || BR2_arc64
 
 endchoice
 
