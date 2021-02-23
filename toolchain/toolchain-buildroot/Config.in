@@ -59,8 +59,6 @@ config BR2_TOOLCHAIN_BUILDROOT_GLIBC
 	depends on !BR2_powerpc_SPE
 	depends on BR2_RISCV_ISA_RVA || !BR2_riscv
 	select BR2_TOOLCHAIN_USES_GLIBC
-	# our glibc.mk enables RPC support
-	select BR2_TOOLCHAIN_HAS_NATIVE_RPC
 	help
 	  This option selects glibc as the C library for the
 	  cross-compilation toolchain.
