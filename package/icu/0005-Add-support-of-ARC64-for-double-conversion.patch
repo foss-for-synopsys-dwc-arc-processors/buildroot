@@ -1,0 +1,39 @@
+From 4796b95a2696ce5aadfe0d99b0856fc38fd52808 Mon Sep 17 00:00:00 2001
+From: Veronika Kremneva <kremneva@synopsys.com>
+Date: Fri, 26 Feb 2021 11:19:29 +0300
+Subject: [PATCH] Add support of ARC64 for double-conversion
+
+While building icu package in Buildroot (https://git.buildroot.org/buildroot/tree/package/icu)
+we're getting this (http://ru20arcgnu1:8080/?reason=icu-67-1):
+
+------------------------------->8---------------------------
+double-conversion-utils.h:144:2: error: #error Target architecture was not detected as
+supported by Double-Conversion.
+  144 | #error Target architecture was not detected as supported by Double-Conversion.
+------------------------------->8---------------------------
+
+This patch adds ARC64 support for Double-Convertion to foss-for-synopsys-dwc-arc-processors/toolchain.
+When similar change will be added to google/double-conversion and unicode-org/icu
+this patch should be removed.
+
+Signed-off-by: Veronika Kremneva <kremneva@synopsys.com>
+---
+ source/i18n/double-conversion-utils.h | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/source/i18n/double-conversion-utils.h b/source/i18n/double-conversion-utils.h
+index 8c6a0e16e0..fee04d3456 100644
+--- a/source/i18n/double-conversion-utils.h
++++ b/source/i18n/double-conversion-utils.h
+@@ -126,7 +126,7 @@ int main(int argc, char** argv) {
+     defined(_MIPS_ARCH_MIPS32R2) || defined(__ARMEB__) ||\
+     defined(__AARCH64EL__) || defined(__aarch64__) || defined(__AARCH64EB__) || \
+     defined(__riscv) || defined(__e2k__) || \
+-    defined(__or1k__) || defined(__arc__) || \
++    defined(__or1k__) || defined(__arc__) || (__ARC64__) || \
+     defined(__microblaze__) || defined(__XTENSA__) || \
+     defined(__EMSCRIPTEN__) || defined(__wasm32__)
+ #define DOUBLE_CONVERSION_CORRECT_DOUBLE_OPERATIONS 1
+-- 
+2.16.2
+
