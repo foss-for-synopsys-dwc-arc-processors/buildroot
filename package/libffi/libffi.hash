@@ -2,5 +2,3 @@
 sha256	3f2f86094f5cf4c36cfe850d2fe029d01f5c2c2296619407c8ba0d8207da9a6b  libffi-3.3.tar.gz
 # License files, locally calculated
 sha256	deaf3a42effb551a5b140fa9afefed183a27f1341c6d1bf430d106a5e6931fc0  LICENSE
-# Version of libffi with ARC64 support
-sha256	524d90dc2de0acdc0daa27a4e568c93c9918f842d44615cbf748155b2b2c6660  libffi-73acfaf8cfd445e9d44b40de8a07d06d8be71e1f.tar.gz
