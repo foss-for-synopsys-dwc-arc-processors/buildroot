@@ -4,8 +4,12 @@
 #
 ################################################################################
 
-LIBFFI_VERSION = 73acfaf8cfd445e9d44b40de8a07d06d8be71e1f
+LIBFFI_VERSION = arc64
 LIBFFI_SITE = $(call github,foss-for-synopsys-dwc-arc-processors,libffi,$(LIBFFI_VERSION))
+ifeq ($(BR2_arc),y)
+LIBFFI_SOURCE = libffi-$(LIBFFI_VERSION).tar.gz
+BR_NO_CHECK_HASH_FOR += $(LIBFFI_SOURCE)
+endif
 LIBFFI_LICENSE = MIT
 LIBFFI_LICENSE_FILES = LICENSE
 LIBFFI_INSTALL_STAGING = YES
