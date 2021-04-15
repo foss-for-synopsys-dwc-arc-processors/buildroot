@@ -36,7 +36,14 @@ define LMBENCH_BUILD_CMDS
 endef
 
 define LMBENCH_INSTALL_TARGET_CMDS
-	$(TARGET_MAKE_ENV) $(MAKE) CFLAGS="$(TARGET_CFLAGS)" OS=$(ARCH) CC="$(TARGET_CC)" BASE=$(TARGET_DIR)/usr -C $(@D)/src install
+	mkdir -p $(TARGET_DIR)/lmbench/tmp
+	mkdir -p $(TARGET_DIR)/lmbench/scripts
+	$(TARGET_MAKE_ENV) $(MAKE) CFLAGS="$(TARGET_CFLAGS)" OS=$(ARCH) CC="$(TARGET_CC)" BASE=$(TARGET_DIR)/lmbench/tmp -C $(@D)/src install
+	mkdir -p $(TARGET_DIR)/lmbench/bin/$(ARCH)
+	mv $(TARGET_DIR)/lmbench/tmp/bin/* $(TARGET_DIR)/lmbench/bin/$(ARCH)
+	rm -rf $(TARGET_DIR)/lmbench/tmp/
+	cp -rfd $(@D)/scripts/ $(TARGET_DIR)/lmbench/.
+	echo " echo ${ARCH}" >  $(TARGET_DIR)/lmbench/scripts/os
 endef
 
 $(eval $(generic-package))
