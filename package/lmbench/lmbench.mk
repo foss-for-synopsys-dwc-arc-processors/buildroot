@@ -43,7 +43,7 @@ define LMBENCH_INSTALL_TARGET_CMDS
 	mv $(TARGET_DIR)/lmbench/tmp/bin/* $(TARGET_DIR)/lmbench/bin/$(ARCH)
 	rm -rf $(TARGET_DIR)/lmbench/tmp/
 	cp -rfd $(@D)/scripts/ $(TARGET_DIR)/lmbench/.
-	echo "export OS=${ARCH}" >  $(TARGET_DIR)/lmbench/scripts/os
+	echo " echo ${ARCH}" >  $(TARGET_DIR)/lmbench/scripts/os
 endef
 
 $(eval $(generic-package))
