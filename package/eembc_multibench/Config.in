@@ -1,4 +1,0 @@
-config BR2_PACKAGE_EEMBC_MULTIBENCH
-        bool "eembc_multibench"
-        help
-          https://gitsnps.internal.synopsys.com/arc_oss/eembc_multibench
