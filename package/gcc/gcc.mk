@@ -11,7 +11,11 @@
 GCC_VERSION = $(call qstrip,$(BR2_GCC_VERSION))
 
 ifeq ($(BR2_GCC_VERSION_ARC),y)
+ifeq ($(GCC_GIT_LOCAL),y)
+GCC_SITE = https://github.com/foss-for-synopsys-dwc-arc-processors/gcc.git
+else
 GCC_SITE = $(call github,foss-for-synopsys-dwc-arc-processors,gcc,$(GCC_VERSION))
+endif
 GCC_SOURCE = gcc-$(GCC_VERSION).tar.gz
 else ifeq ($(BR2_GCC_VERSION_CSKY),y)
 GCC_SITE = $(call github,c-sky,gcc,$(GCC_VERSION))
@@ -56,6 +60,13 @@ HOST_GCC_EXCLUDES = \
 # Create 'build' directory and configure symlink
 #
 
+ifeq ($(GCC_GIT_LOCAL),y)
+GITVER := $(shell git --git-dir=$(GCC_OVERRIDE_SRCDIR)/.git describe --tag --always)
+PKGVER := "BR local ARCv3 ARC64 GNU/Linux $(GITVER)"
+else
+PKGVER := "BR ARCv3 ARC64 GNU/Linux $(BR2_GCC_VERSION)"
+endif
+
 define HOST_GCC_CONFIGURE_SYMLINK
 	mkdir -p $(@D)/build
 	ln -sf ../configure $(@D)/build/configure
@@ -83,7 +94,7 @@ HOST_GCC_COMMON_CONF_OPTS = \
 	--with-gmp=$(HOST_DIR) \
 	--with-mpc=$(HOST_DIR) \
 	--with-mpfr=$(HOST_DIR) \
-	--with-pkgversion="Buildroot $(BR2_VERSION_FULL)" \
+	--with-pkgversion=$(PKGVER) \
 	--with-bugurl="http://bugs.buildroot.net/" \
 	--without-zstd
 

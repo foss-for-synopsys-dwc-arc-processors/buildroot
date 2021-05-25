@@ -6,6 +6,9 @@
 
 GCC_INITIAL_VERSION = $(GCC_VERSION)
 GCC_INITIAL_SITE = $(GCC_SITE)
+ifeq ($(GCC_GIT_LOCAL),y)
+GCC_INITIAL_SITE_METHOD = git
+endif
 GCC_INITIAL_SOURCE = $(GCC_SOURCE)
 
 # We do not have a 'gcc' package per-se; we only have two incarnations,
