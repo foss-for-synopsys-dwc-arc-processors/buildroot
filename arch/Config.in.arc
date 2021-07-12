@@ -51,6 +51,28 @@ config BR2_arc64
 	   64-bit ARC HS6x processor
 endchoice
 
+if BR2_arc64
+
+choice
+	prompt "Floating point strategy"
+
+config BR2_ARC64_SOFT_FLOAT
+	bool "Soft float"
+	select BR2_SOFT_FLOAT
+	help
+	  This option uses software emulated floating point code for ARC
+	  cores with Floating Point unit not configured.
+
+config BR2_ARC64_HARD_FLOAT
+	bool "ARCv3 Floating Point Unit"
+	help
+	  This option uses Hardware Floating Point Unit in ARCv3 ISA
+	  based ARC cores.
+
+endchoice
+
+endif
+
 # Choice of atomic instructions presence
 config BR2_ARC_ATOMIC_EXT
 	bool "Atomic extension (LLOCK/SCOND instructions)"
@@ -77,6 +99,9 @@ config BR2_GCC_TARGET_CPU
 	default "hs38"	 if BR2_archs38_64mpy
 	default "hs38_linux"	 if BR2_archs38_full
 	default "hs4x_rel31"	 if BR2_archs4x_rel31
+
+config BR2_GCC_TARGET_FPU
+	default "fpud"   if BR2_ARC64_HARD_FLOAT
 
 config BR2_READELF_ARCH_NAME
 	default "ARCompact"	if BR2_arc750d || BR2_arc770d
