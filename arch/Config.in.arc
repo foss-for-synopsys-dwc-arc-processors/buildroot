@@ -63,7 +63,6 @@ choice
 
 config BR2_ARC64_SOFT_FLOAT
 	bool "Soft float"
-	select BR2_SOFT_FLOAT
 	help
 	  This option uses software emulated floating point code for ARC
 	  cores with Floating Point unit not configured.
