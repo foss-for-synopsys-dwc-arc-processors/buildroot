@@ -115,7 +115,7 @@ config BR2_READELF_ARCH_NAME
 	default "ARCompact"	if BR2_arc750d || BR2_arc770d
 	default "ARCv2"		if BR2_archs38 || BR2_archs38_64mpy || BR2_archs38_full
 	default "ARCv2"		if BR2_archs4x_rel31 || BR2_archs4x
-	default "ARCv3_64"	if BR2_arc64
+	default "Synopsys ARCv3_64"	if BR2_arc64
 
 choice
 	prompt "MMU Page Size"
