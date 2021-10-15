@@ -1,0 +1,30 @@
+From 348f7cf8a736faac3f05529dda301166cb427b44 Mon Sep 17 00:00:00 2001
+From: Veronika Kremneva <kremneva@synopsys.com>
+Date: Fri, 15 Oct 2021 13:59:30 +0300
+Subject: [PATCH] platform.h: Add ARC64 architecture
+
+This patch is temporary until support for ARC64 is added to flashrom.
+PR for that: https://github.com/flashrom/flashrom/pull/227
+
+Signed-off-by: Veronika Kremneva <kremneva@synopsys.com>
+---
+ platform.h | 3 +++
+ 1 file changed, 3 insertions(+)
+
+diff --git a/platform.h b/platform.h
+index 751957cae4..f061bd76a4 100644
+--- a/platform.h
++++ b/platform.h
+@@ -77,6 +77,9 @@
+ #elif defined(__arc__)
+ 	#define __FLASHROM_ARCH__ "arc"
+ 	#define IS_ARC 1
++#elif defined(__ARC64__)
++	#define __FLASHROM_ARCH__ "arc64"
++	#define IS_ARC 1
+ #endif
+ 
+ #if !(IS_X86 || IS_MIPS || IS_PPC || IS_ARM || IS_SPARC || IS_ALPHA || IS_HPPA || IS_M68K || IS_RISCV || IS_SH || IS_S390 || IS_ARC)
+-- 
+2.16.2
+
