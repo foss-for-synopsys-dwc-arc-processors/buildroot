@@ -17,7 +17,6 @@ config BR2_PACKAGE_OPENJDK
 	bool "openjdk"
 	depends on BR2_PACKAGE_HOST_OPENJDK_BIN_ARCH_SUPPORTS
 	depends on BR2_PACKAGE_OPENJDK_ARCH_SUPPORTS
-	depends on !BR2_SOFT_FLOAT
 	depends on !BR2_STATIC_LIBS # glibc
 	depends on BR2_INSTALL_LIBSTDCPP # cups
 	depends on BR2_TOOLCHAIN_HAS_THREADS # alsa-lib, cups, libusb

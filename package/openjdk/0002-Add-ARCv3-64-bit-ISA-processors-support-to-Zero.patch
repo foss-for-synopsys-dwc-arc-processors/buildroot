@@ -1,0 +1,102 @@
+From 32bdf8c3d5b61e74ebfd18f60c95c2362b402fa3 Mon Sep 17 00:00:00 2001
+From: Alexey Brodkin <abrodkin@synopsys.com>
+Date: Thu, 21 Oct 2021 06:47:46 -0700
+Subject: [PATCH] Add ARCv3 64-bit ISA processors support to Zero
+
+---
+ make/autoconf/build-aux/autoconf-config.sub | 4 ++--
+ make/autoconf/platform.m4                   | 8 ++++++++
+ src/hotspot/os/linux/os_linux.cpp           | 8 +++++++-
+ 3 files changed, 17 insertions(+), 3 deletions(-)
+
+diff --git a/make/autoconf/build-aux/autoconf-config.sub b/make/autoconf/build-aux/autoconf-config.sub
+index 1aab2b303e3..f0cd9499dbe 100644
+--- a/make/autoconf/build-aux/autoconf-config.sub
++++ b/make/autoconf/build-aux/autoconf-config.sub
+@@ -267,7 +267,7 @@ case $basic_machine in
+ 	| alpha | alphaev[4-8] | alphaev56 | alphaev6[78] | alphapca5[67] \
+ 	| alpha64 | alpha64ev[4-8] | alpha64ev56 | alpha64ev6[78] | alpha64pca5[67] \
+ 	| am33_2.0 \
+-	| arc | arm | arm[bl]e | arme[lb] | armv[2345] | armv[345][lb] | avr | avr32 \
++	| arc | arc64 | arm | arm[bl]e | arme[lb] | armv[2345] | armv[345][lb] | avr | avr32 \
+ 	| bfin \
+ 	| c4x | clipper \
+ 	| d10v | d30v | dlx | dsp16xx \
+@@ -342,7 +342,7 @@ case $basic_machine in
+ 	| a29k-* \
+ 	| alpha-* | alphaev[4-8]-* | alphaev56-* | alphaev6[78]-* \
+ 	| alpha64-* | alpha64ev[4-8]-* | alpha64ev56-* | alpha64ev6[78]-* \
+-	| alphapca5[67]-* | alpha64pca5[67]-* | arc-* \
++	| alphapca5[67]-* | alpha64pca5[67]-* | arc-* | arc64-* \
+ 	| arm-*  | armbe-* | armle-* | armeb-* | armv*-* \
+ 	| avr-* | avr32-* \
+ 	| bfin-* | bs2000-* \
+diff --git a/make/autoconf/platform.m4 b/make/autoconf/platform.m4
+index dc416ece885..776ac5b3b4e 100644
+--- a/make/autoconf/platform.m4
++++ b/make/autoconf/platform.m4
+@@ -60,6 +60,12 @@ AC_DEFUN([PLATFORM_EXTRACT_VARS_FROM_CPU],
+       VAR_CPU_BITS=32
+       VAR_CPU_ENDIAN=little
+       ;;
++    arc64)
++      VAR_CPU=arc64
++      VAR_CPU_ARCH=arc64
++      VAR_CPU_BITS=64
++      VAR_CPU_ENDIAN=little
++      ;;
+     arm*)
+       VAR_CPU=arm
+       VAR_CPU_ARCH=arm
+@@ -486,6 +492,8 @@ AC_DEFUN([PLATFORM_SETUP_LEGACY_VARS_HELPER],
+   # The cpu defines below are for zero, we don't support them directly.
+   elif test "x$OPENJDK_$1_CPU" = xarc; then
+     HOTSPOT_$1_CPU_DEFINE=ARC
++  elif test "x$OPENJDK_$1_CPU" = xarc64; then
++    HOTSPOT_$1_CPU_DEFINE=ARC64
+   elif test "x$OPENJDK_$1_CPU" = xsparc; then
+     HOTSPOT_$1_CPU_DEFINE=SPARC
+   elif test "x$OPENJDK_$1_CPU" = xppc; then
+diff --git a/src/hotspot/os/linux/os_linux.cpp b/src/hotspot/os/linux/os_linux.cpp
+index 2bf084895ba..419628ef38a 100644
+--- a/src/hotspot/os/linux/os_linux.cpp
++++ b/src/hotspot/os/linux/os_linux.cpp
+@@ -1861,6 +1861,9 @@ void * os::dll_load(const char *filename, char *ebuf, int ebuflen) {
+ #ifndef EM_ARC_COMPACT2
+   #define EM_ARC_COMPACT2 195             /* ARC ARCv2 ISA */
+ #endif
++#ifndef EM_ARC_COMPACT3_64
++  #define EM_ARC_COMPACT3_64 253          /* ARC ARCv3 64-bit ISA */
++#endif
+ #ifndef EM_RISCV
+   #define EM_RISCV      243               /* RISC-V */
+ #endif
+@@ -1883,6 +1886,7 @@ void * os::dll_load(const char *filename, char *ebuf, int ebuflen) {
+ #endif
+     {EM_ARM,         EM_ARM,     ELFCLASS32, ELFDATA2LSB, (char*)"ARM"},
+     {EM_ARC_COMPACT2, EM_ARC_COMPACT2, ELFCLASS32, ELFDATA2LSB, (char*)"ARC"},
++    {EM_ARC_COMPACT3_64, EM_ARC_COMPACT3_64, ELFCLASS64, ELFDATA2LSB, (char*)"ARC64"},
+     // we only support 64 bit z architecture
+     {EM_S390,        EM_S390,    ELFCLASS64, ELFDATA2MSB, (char*)"IBM System/390"},
+     {EM_ALPHA,       EM_ALPHA,   ELFCLASS64, ELFDATA2LSB, (char*)"Alpha"},
+@@ -1912,6 +1916,8 @@ void * os::dll_load(const char *filename, char *ebuf, int ebuflen) {
+   static  Elf32_Half running_arch_code=EM_AARCH64;
+ #elif  (defined ARC)
+   static  Elf32_Half running_arch_code=EM_ARC_COMPACT2;
++#elif  (defined ARC64)
++  static  Elf32_Half running_arch_code=EM_ARC_COMPACT3_64;
+ #elif  (defined ARM)
+   static  Elf32_Half running_arch_code=EM_ARM;
+ #elif  (defined S390)
+@@ -1932,7 +1938,7 @@ void * os::dll_load(const char *filename, char *ebuf, int ebuflen) {
+   static  Elf32_Half running_arch_code=EM_RISCV;
+ #else
+     #error Method os::dll_load requires that one of following is defined:\
+-        AARCH64, ALPHA, ARC, ARM, AMD64, IA32, IA64, M68K, MIPS, MIPSEL, PARISC, __powerpc__, __powerpc64__, RISCV, S390, SH, __sparc
++        AARCH64, ALPHA, ARC, ARC64, ARM, AMD64, IA32, IA64, M68K, MIPS, MIPSEL, PARISC, __powerpc__, __powerpc64__, RISCV, S390, SH, __sparc
+ #endif
+ 
+   // Identify compatibility class for VM's architecture and library's architecture
+-- 
+2.16.2
+
