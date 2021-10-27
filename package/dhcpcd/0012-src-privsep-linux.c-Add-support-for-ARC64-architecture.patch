@@ -1,0 +1,35 @@
+From 1cf7fac4304c96e3ccd6b82209e60909c260def6 Mon Sep 17 00:00:00 2001
+From: Veronika Kremneva <kremneva@synopsys.com>
+Date: Thu, 21 Oct 2021 16:26:52 +0300
+Subject: [PATCH] src/privsep-linux.c: Add support for ARC64 architecture
+
+This patch adds support for Synopsys ARC64 architecture.
+
+---
+ src/privsep-linux.c | 10 ++++++++++
+ 1 file changed, 10 insertions(+)
+
+diff --git a/src/privsep-linux.c b/src/privsep-linux.c
+index f272b4bdad..2178404afc 100644
+--- a/src/privsep-linux.c
++++ b/src/privsep-linux.c
+@@ -165,6 +165,16 @@ ps_root_sendnetlink(struct dhcpcd_ctx *ctx, int protocol, struct msghdr *msg)
+ #  else
+ #    error "Platform does not support seccomp filter yet"
+ #  endif
++#elif defined(__ARCV3__)
++#  if defined(__ARC64__)
++#    if (BYTE_ORDER == LITTLE_ENDIAN)
++#      define SECCOMP_AUDIT_ARCH AUDIT_ARCH_ARCV3
++#    else
++#      define SECCOMP_AUDIT_ARCH AUDIT_ARCH_ARCV3BE
++#    endif
++#  else
++#    error "Platform does not support seccomp filter yet"
++#  endif
+ #elif defined(__arm__)
+ #  ifndef EM_ARM
+ #    define EM_ARM 40
+-- 
+2.16.2
+
