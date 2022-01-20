@@ -4,6 +4,8 @@ ifeq ($(BR2_arc),y)
 ifeq ($(BR2_ARC_ATOMIC_EXT),y)
 ifeq ($(BR2_arc64),y)
 ARCH_TOOLCHAIN_WRAPPER_OPTS += -matomic=1
+else ifeq ($(BR2_arc32),y)
+ARCH_TOOLCHAIN_WRAPPER_OPTS += -matomic=1
 else
 ARCH_TOOLCHAIN_WRAPPER_OPTS += -matomic
 endif

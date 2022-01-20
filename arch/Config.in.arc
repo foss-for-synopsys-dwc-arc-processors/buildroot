@@ -54,6 +54,12 @@ config BR2_arc64
 	select BR2_ARCH_IS_64
 	help
 	   64-bit ARC HS6x processor
+
+config BR2_arc32
+	bool "32-bit ARC HS58"
+	help
+	   32-bit ARC HS5x processor
+
 endchoice
 
 if BR2_arc64
@@ -83,12 +89,13 @@ config BR2_ARC_ATOMIC_EXT
 	default y if BR2_arc770d
 	default y if BR2_archs38 || BR2_archs38_64mpy || BR2_archs38_full
 	default y if BR2_archs4x_rel31 || BR2_archs4x
-	default y if BR2_arc64
+	default y if BR2_arc64 || BR2_arc32
 
 config BR2_ARCH
-	default "arc"	if BR2_arcle && !BR2_ARCH_IS_64
-	default "arceb"	if BR2_arceb && !BR2_ARCH_IS_64
-	default "arc64" if BR2_ARCH_IS_64
+	default "arc"	if BR2_arcle && !BR2_arc64 && !BR2_arc32
+	default "arceb"	if BR2_arceb && !BR2_arc64 && !BR2_arc32
+	default "arc64" if BR2_arc64
+	default "arc32" if BR2_arc32
 
 config BR2_NORMALIZED_ARCH
 	default "arc"
@@ -102,7 +109,7 @@ config BR2_ENDIAN
 	default "BIG"	 if BR2_arceb
 
 config BR2_GCC_TARGET_CPU
-	depends on !BR2_arc64
+	depends on !BR2_arc64 && !BR2_arc32
 	default "arc700" if BR2_arc750d
 	default "arc700" if BR2_arc770d
 	default "archs"	 if BR2_archs38
@@ -119,10 +126,11 @@ config BR2_READELF_ARCH_NAME
 	default "ARCv2"		if BR2_archs38 || BR2_archs38_64mpy || BR2_archs38_full
 	default "ARCv2"		if BR2_archs4x_rel31 || BR2_archs4x
 	default "Synopsys ARCv3 64-bit processor"	if BR2_arc64
+	default "Synopsys ARCv3 32-bit processor"	if BR2_arc32
 
 choice
 	prompt "MMU Page Size"
-	default BR2_ARC_PAGE_SIZE_4K	if BR2_arc64
+	default BR2_ARC_PAGE_SIZE_4K	if BR2_arc64 || BR2_arc32
 	default BR2_ARC_PAGE_SIZE_8K
 	help
 	  MMU starting from version 3 (found in ARC 770) and now
