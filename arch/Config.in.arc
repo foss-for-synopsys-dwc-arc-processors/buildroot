@@ -159,6 +159,10 @@ config BR2_ARC_PAGE_SIZE_16K
 	bool "16KB"
 	depends on !BR2_arc750d
 
+config BR2_ARC_PAGE_SIZE_64K
+	bool "64KB"
+	depends on BR2_arc64
+
 endchoice
 
 config BR2_ARC_PAGE_SIZE
