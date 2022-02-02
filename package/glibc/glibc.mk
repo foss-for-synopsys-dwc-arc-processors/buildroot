@@ -4,11 +4,8 @@
 #
 ################################################################################
 
-ifeq ($(BR2_arc64),y)
+ifeq ($(BR2_arc64)$(BR2_arc32),y)
 GLIBC_VERSION =  arc64
-GLIBC_SITE = $(call github,foss-for-synopsys-dwc-arc-processors,glibc,$(GLIBC_VERSION))
-else ifeq ($(BR2_arc32),y)
-GLIBC_VERSION =  arc32
 GLIBC_SITE = $(call github,foss-for-synopsys-dwc-arc-processors,glibc,$(GLIBC_VERSION))
 else
 # Generate version string using:
