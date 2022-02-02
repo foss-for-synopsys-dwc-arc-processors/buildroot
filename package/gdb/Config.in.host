@@ -56,9 +56,11 @@ config BR2_GDB_VERSION_9_2
 
 config BR2_GDB_VERSION_10
 	bool "gdb 10.x"
+	depends on !(BR2_arc32 || BR2_arc64)
 
 config BR2_GDB_VERSION_11
 	bool "gdb 11.x"
+	depends on !(BR2_arc32 || BR2_arc64)
 
 endchoice
 
@@ -67,7 +69,8 @@ endif
 # If cross-gdb is not enabled, the latest stable version is chosen.
 config BR2_GDB_VERSION
 	string
-	default "arc-2020.09-release-gdb" if BR2_arc
+	default "arc-2020.09-release-gdb" if BR2_arc && !(BR2_arc32 || BR2_arc64)
+	default "arc64" if BR2_arc32 || BR2_arc64
 	default "4ecb98fbc2f94dbe01b69384afbc515107de73df" if BR2_csky
 	default "9.2"      if BR2_GDB_VERSION_9_2
 	default "10.2"	   if BR2_GDB_VERSION_10 || !BR2_PACKAGE_HOST_GDB

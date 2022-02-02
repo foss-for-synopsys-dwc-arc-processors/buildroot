@@ -12,6 +12,8 @@ ifeq ($(BR2_arc),y)
 GDB_SITE = $(call github,foss-for-synopsys-dwc-arc-processors,binutils-gdb,$(GDB_VERSION))
 GDB_SOURCE = gdb-$(GDB_VERSION).tar.gz
 GDB_FROM_GIT = y
+
+BR_NO_CHECK_HASH_FOR += gdb-$(GDB_VERSION).tar.gz
 endif
 
 ifeq ($(BR2_csky),y)
