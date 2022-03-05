@@ -4,9 +4,15 @@
 #
 ################################################################################
 
+ifeq ($(BR2_arc32),y)
+UCLIBC_VERSION =  upstream
+UCLIBC_SITE = $(call github,foss-for-synopsys-dwc-arc-processors,uClibc,$(UCLIBC_VERSION))
+BR_NO_CHECK_HASH_FOR += uclibc-$(UCLIBC_VERSION).tar.gz
+else
 UCLIBC_VERSION = 1.0.42
 UCLIBC_SOURCE = uClibc-ng-$(UCLIBC_VERSION).tar.xz
 UCLIBC_SITE = https://downloads.uclibc-ng.org/releases/$(UCLIBC_VERSION)
+endif
 UCLIBC_LICENSE = LGPL-2.1+
 UCLIBC_LICENSE_FILES = COPYING.LIB
 UCLIBC_INSTALL_STAGING = YES
