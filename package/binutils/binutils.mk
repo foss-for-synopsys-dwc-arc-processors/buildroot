@@ -9,7 +9,7 @@
 BINUTILS_VERSION = $(call qstrip,$(BR2_BINUTILS_VERSION))
 ifeq ($(BINUTILS_VERSION),)
 ifeq ($(BR2_arc),y)
-ifeq ($(BR2_arc64)$(BR2_arc32),y)
+ifeq ($(BR2_arc64)$(BR2_archs58),y)
 BINUTILS_VERSION = arc64
 else
 BINUTILS_VERSION = arc-2020.09-release

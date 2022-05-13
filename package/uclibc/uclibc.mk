@@ -4,7 +4,7 @@
 #
 ################################################################################
 
-ifeq ($(BR2_arc32),y)
+ifeq ($(BR2_archs58),y)
 UCLIBC_VERSION =  uclibc-arc32-wip
 UCLIBC_SITE = $(call github,foss-for-synopsys-dwc-arc-processors,uClibc,$(UCLIBC_VERSION))
 BR_NO_CHECK_HASH_FOR += uclibc-$(UCLIBC_VERSION).tar.gz
@@ -96,7 +96,7 @@ define UCLIBC_ARC_ATOMICS_CONFIG
 endef
 endif
 
-ifeq ($(BR2_arc32),y)
+ifeq ($(BR2_archs58),y)
 define UCLIBC_ARC_STRING_ARCH_OPT
 	$(call KCONFIG_DISABLE_OPT,UCLIBC_HAS_STRING_ARCH_OPT)
 endef

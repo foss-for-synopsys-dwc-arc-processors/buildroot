@@ -4,7 +4,7 @@
 #
 ################################################################################
 
-ifeq ($(BR2_arc64)$(BR2_arc32),y)
+ifeq ($(BR2_arc64)$(BR2_archs58),y)
 GLIBC_VERSION =  arc64
 GLIBC_SITE = $(call github,foss-for-synopsys-dwc-arc-processors,glibc,$(GLIBC_VERSION))
 else

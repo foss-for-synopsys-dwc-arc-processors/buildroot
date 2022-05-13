@@ -1,6 +1,6 @@
 # arch
 BR2_arcle=y
-BR2_arc32=y
+BR2_archs58=y
 
 # misc
 BR2_PACKAGE_HOST_LINUX_HEADERS_CUSTOM_5_16=y
