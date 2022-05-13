@@ -9,6 +9,11 @@ ARCH_TOOLCHAIN_WRAPPER_OPTS = -matomic
 endif
 endif
 
+# Target more powerful HS58 configuration w/ double loads/stores & mpy9
+ifeq ($(BR2_arc32),y)
+ARCH_TOOLCHAIN_WRAPPER_OPTS += -mcpu=hs58
+endif
+
 # Explicitly set LD's "max-page-size" instead of relying on some defaults
 ifeq ($(BR2_ARC_PAGE_SIZE_4K),y)
 ARCH_TOOLCHAIN_WRAPPER_OPTS += -Wl,-z,max-page-size=4096
