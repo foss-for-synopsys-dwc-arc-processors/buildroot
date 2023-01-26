@@ -58,8 +58,14 @@ endif
 
 # All newer versions of GDB need host-gmp, so it's only for older
 # versions that the dependency can be avoided.
-ifeq ($(BR2_GDB_VERSION_10)$(BR2_arc),)
+ifeq ($(BR2_GDB_VERSION_10),)
 HOST_GDB_DEPENDENCIES += host-gmp
+endif
+
+# GDB version from 14 need host-mpfr, so far only ARC GDB fork
+# is based on such sources.
+ifeq ($(BR2_arc),y)
+HOST_GDB_DEPENDENCIES += host-mpfr
 endif
 
 # When gdb sources are fetched from the binutils-gdb repository, they
@@ -132,7 +138,6 @@ GDB_CONF_OPTS = \
 	--without-included-gettext \
 	--disable-werror \
 	--enable-static \
-	--without-mpfr \
 	--disable-source-highlight
 
 ifeq ($(BR2_PACKAGE_GDB_DEBUGGER),y)
@@ -156,9 +161,8 @@ GDB_CONF_OPTS += \
 endif
 
 # Starting from GDB 11.x, gmp is needed as a dependency to build full
-# gdb. So we avoid the dependency only for GDB 10.x and the special
-# version used on ARC.
-ifeq ($(BR2_GDB_VERSION_10)$(BR2_arc):$(BR2_PACKAGE_GDB_DEBUGGER),:y)
+# gdb. So we avoid the dependency only for GDB 10.
+ifeq ($(BR2_GDB_VERSION_10):$(BR2_PACKAGE_GDB_DEBUGGER),:y)
 GDB_CONF_OPTS += \
 	--with-libgmp-prefix=$(STAGING_DIR)/usr
 GDB_DEPENDENCIES += gmp
@@ -260,7 +264,6 @@ HOST_GDB_CONF_OPTS = \
 	--without-included-gettext \
 	--with-system-zlib \
 	--with-curses \
-	--without-mpfr \
 	--disable-source-highlight \
 	$(GDB_DISABLE_BINUTILS_CONF_OPTS)
 
