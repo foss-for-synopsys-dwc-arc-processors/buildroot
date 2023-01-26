@@ -10,7 +10,7 @@ BINUTILS_VERSION = $(call qstrip,$(BR2_BINUTILS_VERSION))
 ifeq ($(BINUTILS_VERSION),)
 ifeq ($(BR2_arc),y)
 ifeq ($(BR2_arc64)$(BR2_arc32),y)
-BINUTILS_VERSION = arc64
+BINUTILS_VERSION = arc-2022.09
 else
 BINUTILS_VERSION = arc-2020.09-release
 endif
@@ -25,7 +25,7 @@ BINUTILS_SOURCE = binutils-gdb-$(BINUTILS_VERSION).tar.gz
 BINUTILS_FROM_GIT = y
 endif
 
-ifeq ($(BINUTILS_VERSION),arc64)
+ifeq ($(BINUTILS_VERSION),arc-2022.09)
 BINUTILS_SITE = $(call github,foss-for-synopsys-dwc-arc-processors,binutils-gdb,$(BINUTILS_VERSION))
 BINUTILS_SOURCE = binutils-gdb-$(BINUTILS_VERSION).tar.gz
 BINUTILS_FROM_GIT = y
