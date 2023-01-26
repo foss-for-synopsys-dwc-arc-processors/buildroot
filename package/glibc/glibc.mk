@@ -5,7 +5,7 @@
 ################################################################################
 
 ifeq ($(BR2_arc64)$(BR2_arc32),y)
-GLIBC_VERSION =  arc64
+GLIBC_VERSION =  arc-2022.09-release
 GLIBC_SITE = $(call github,foss-for-synopsys-dwc-arc-processors,glibc,$(GLIBC_VERSION))
 else
 # Generate version string using:
@@ -20,7 +20,6 @@ GLIBC_VERSION = 2.36-66-ga1dc0be03c9dd850b864bd7a9c03cf8e396eb7ca
 # Then check that the mirror has been synced already (happens once a day.)
 GLIBC_SITE = $(call github,bminor,glibc,$(GLIBC_VERSION))
 endif
-BR_NO_CHECK_HASH_FOR += glibc-$(GLIBC_VERSION).tar.gz
 
 GLIBC_LICENSE = GPL-2.0+ (programs), LGPL-2.1+, BSD-3-Clause, MIT (library)
 GLIBC_LICENSE_FILES = COPYING COPYING.LIB LICENSES

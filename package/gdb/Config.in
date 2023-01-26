@@ -51,7 +51,7 @@ config BR2_PACKAGE_GDB_SERVER
 config BR2_PACKAGE_GDB_DEBUGGER
 	bool "full debugger"
 	depends on BR2_USE_WCHAR
-	depends on !BR2_sh
+	depends on !BR2_sh && !(BR2_arc64 || BR2_arc32)
 	select BR2_PACKAGE_GMP if !BR2_GDB_VERSION_10 && !BR2_arc
 	select BR2_PACKAGE_NCURSES
 
