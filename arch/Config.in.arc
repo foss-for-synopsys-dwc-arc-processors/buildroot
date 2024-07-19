@@ -171,5 +171,12 @@ config BR2_ARC_PAGE_SIZE
 	default "8K" if BR2_ARC_PAGE_SIZE_8K
 	default "16K" if BR2_ARC_PAGE_SIZE_16K
 
+config BR2_ARC_WITHOUT_DELAY_SLOTS
+	bool "Do not build with delay slots"
+	default n
+	help
+	  Do not generate delay slots for all target libraries and binaries
+	  including standard libraries.
+
 # vim: ft=kconfig
 # -*- mode:kconfig; -*-

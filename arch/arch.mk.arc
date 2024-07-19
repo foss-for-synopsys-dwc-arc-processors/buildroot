@@ -28,4 +28,10 @@ TARGET_CFLAGS += -Wl,-z,max-page-size=65536
 TARGET_LDFLAGS += -Wl,-z,max-page-size=65536
 endif
 
+ifeq ($(BR2_ARC_WITHOUT_DELAY_SLOTS),y)
+ARCH_TOOLCHAIN_WRAPPER_OPTS += -fno-delayed-branch
+TARGET_CFLAGS += -fno-delayed-branch
+TARGET_LDFLAGS += -fno-delayed-branch
+endif
+
 endif
