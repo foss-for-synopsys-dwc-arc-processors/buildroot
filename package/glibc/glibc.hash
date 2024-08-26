@@ -1,6 +1,6 @@
 # Locally calculated (fetched from Github)
 sha256  2ba018b344e0e8330dcadd6130f4174f0fc2502b2e032210345e0e5a2f7ed12e  glibc-2.39-5-ge0910f1d3278f05439fb434ee528fc9be1b6bd5e.tar.gz
-sha256  353130b04eae84c60ae23e9889912199417d15a6b22c36d1d21784198f2088bc  glibc-arc-2023.09-release.tar.gz
+sha256  09df1f340b0a6bb1d0f99bce14c6e41ddf4ba86f6c27d30109cde2293798f3f0  glibc-arc-2024.06-release.tar.gz
 
 # Hashes for license files
 sha256  8177f97513213526df2cf6184d8ff986c675afb514d4e68a404010521b880643  COPYING
