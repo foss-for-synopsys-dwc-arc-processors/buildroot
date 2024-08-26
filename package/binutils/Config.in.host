@@ -29,7 +29,7 @@ endchoice
 
 config BR2_BINUTILS_VERSION
 	string
-	default "arc-2024.06"	if BR2_BINUTILS_VERSION_ARC
+	default "arc-2024.06-release"	if BR2_BINUTILS_VERSION_ARC
 	default "2.40"		if BR2_BINUTILS_VERSION_2_40_X
 	default "2.41"		if BR2_BINUTILS_VERSION_2_41_X
 	default "2.42"		if BR2_BINUTILS_VERSION_2_42_X

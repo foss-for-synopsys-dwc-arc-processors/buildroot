@@ -76,7 +76,7 @@ config BR2_GCC_VERSION
 	default "12.3.0"    if BR2_GCC_VERSION_12_X
 	default "13.3.0"    if BR2_GCC_VERSION_13_X
 	default "14.1.0"    if BR2_GCC_VERSION_14_X
-	default "arc-2024.06" if BR2_GCC_VERSION_ARC
+	default "arc-2024.06-release" if BR2_GCC_VERSION_ARC
 
 config BR2_EXTRA_GCC_CONFIG_OPTIONS
 	string "Additional gcc options"
