@@ -1,0 +1,27 @@
+# Synopsys nSIM RISC-V 64-bit configuration
+BR2_riscv=y
+BR2_RISCV_64=y
+BR2_RISCV_ABI_LP64D=y
+
+# System configuration
+BR2_ROOTFS_POST_IMAGE_SCRIPT="board/synopsys/nsim-riscv64/post-image.sh"
+
+# Toolchain - use uClibc instead of glibc
+BR2_TOOLCHAIN_BUILDROOT=y
+BR2_TOOLCHAIN_BUILDROOT_UCLIBC=y
+BR2_UCLIBC_VERSION_1_0_54=y
+
+# Kernel headers
+BR2_KERNEL_HEADERS_6_12=y
+
+# Linux kernel
+BR2_LINUX_KERNEL=y
+BR2_LINUX_KERNEL_CUSTOM_VERSION=y
+BR2_LINUX_KERNEL_CUSTOM_VERSION_VALUE="6.12.27"
+BR2_LINUX_KERNEL_USE_ARCH_DEFAULT_CONFIG=y
+BR2_LINUX_KERNEL_CONFIG_FRAGMENT_FILES="board/synopsys/nsim-riscv64/kernel-fragment.config"
+BR2_LINUX_KERNEL_IMAGE=y
+
+# Filesystem
+BR2_TARGET_ROOTFS_EXT2=y
+BR2_TARGET_ROOTFS_EXT2_SIZE="100M"
