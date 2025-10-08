@@ -23,5 +23,16 @@ BR2_LINUX_KERNEL_CONFIG_FRAGMENT_FILES="board/synopsys/nsim-riscv64/kernel-fragm
 BR2_LINUX_KERNEL_IMAGE=y
 
 # Filesystem
-BR2_TARGET_ROOTFS_EXT2=y
-BR2_TARGET_ROOTFS_EXT2_SIZE="200M"
+BR2_TARGET_ROOTFS_INITRAMFS=y
+BR2_TARGET_ROOTFS_CPIO=y
+BR2_ROOTFS_POST_BUILD_SCRIPT="board/synopsys/nsim-riscv64/post-build.sh"
+# Console: getty on UART ttyS0
+BR2_TARGET_GENERIC_GETTY=y
+BR2_TARGET_GENERIC_GETTY_PORT="ttyS0"
+BR2_TARGET_GENERIC_GETTY_BAUDRATE_KEEP=y
+BR2_TARGET_GENERIC_GETTY_OPTIONS="-n -i -l /bin/sh"
+# Enable CoreMark benchmark
+BR2_PACKAGE_COREMARK=y
+
+# Rootfs overlay for custom init scripts
+BR2_ROOTFS_OVERLAY="board/synopsys/nsim-riscv64/overlay"

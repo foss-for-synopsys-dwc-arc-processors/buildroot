@@ -1,0 +1,9 @@
+#!/bin/sh
+# Ensure /dev is populated before other init scripts
+case "$1" in
+  start)
+    mkdir -p /dev
+    mountpoint -q /dev || mount -t devtmpfs devtmpfs /dev || echo "WARN: devtmpfs mount failed" > /proc/kmsg
+    ;;
+esac
+exit 0

@@ -1,0 +1,16 @@
+#!/bin/sh
+# Run CoreMark automatically at the end of system init
+
+case "$1" in
+  start)
+    if [ -x /usr/bin/coremark ]; then
+      echo "[AUTO] Running CoreMark benchmark..." > /dev/console
+      # Run CoreMark in background, log to file and console
+      nohup /usr/bin/coremark 2>&1 | tee -a /var/log/coremark.log > /dev/console &
+    else
+      echo "[AUTO] /usr/bin/coremark not found or not executable" > /dev/console
+    fi
+    ;;
+esac
+
+exit 0
