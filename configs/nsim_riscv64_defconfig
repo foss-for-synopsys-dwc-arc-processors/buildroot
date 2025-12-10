@@ -5,6 +5,10 @@ BR2_RISCV_ABI_LP64D=y
 
 # System configuration
 BR2_ROOTFS_POST_IMAGE_SCRIPT="board/synopsys/nsim-riscv64/post-image.sh"
+BR2_ROOTFS_OVERLAY="board/synopsys/nsim-riscv64/rootfs-overlay"
+
+# Auto-login as root (no password prompt)
+BR2_TARGET_GENERIC_GETTY_OPTIONS="-n -l /bin/autologin"
 
 # Toolchain - use uClibc instead of glibc
 BR2_TOOLCHAIN_BUILDROOT=y
