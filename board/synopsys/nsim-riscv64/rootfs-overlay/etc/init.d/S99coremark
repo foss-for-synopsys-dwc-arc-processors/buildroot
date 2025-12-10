@@ -1,0 +1,46 @@
+#!/bin/sh
+#
+# CoreMark Benchmark Auto-Run Script
+#
+
+COREMARK=/usr/bin/coremark
+RESULTS_FILE=/tmp/coremark_results.txt
+
+case "$1" in
+  start)
+    if [ -x "$COREMARK" ]; then
+        echo ""
+        echo "=============================================="
+        echo "   CoreMark Benchmark - Auto Running"
+        echo "=============================================="
+        echo ""
+        echo "Starting CoreMark benchmark..."
+        echo "This will take approximately 10-20 seconds..."
+        echo ""
+        
+        # Run CoreMark and capture output
+        $COREMARK 0x0 0x0 0x66 0 7 1 2000 > $RESULTS_FILE 2>&1
+        
+        # Display results
+        echo "=============================================="
+        echo "   CoreMark Results"
+        echo "=============================================="
+        cat $RESULTS_FILE
+        echo "=============================================="
+        echo ""
+        echo "Results saved to: $RESULTS_FILE"
+        echo "To re-run: coremark 0x0 0x0 0x66 0 7 1 2000"
+        echo ""
+    fi
+    ;;
+  stop)
+    ;;
+  restart|reload)
+    ;;
+  *)
+    echo "Usage: $0 {start|stop|restart}"
+    exit 1
+esac
+
+exit 0
+
