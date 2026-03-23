@@ -98,7 +98,7 @@ config BR2_ARC_ATOMIC_EXT
 	default y if BR2_arc32 || BR2_arc64
 
 config BR2_ARCH
-	default "arc"
+	default "arc" if !BR2_arc64 && !BR2_arc32
 	default "arc32" if BR2_arc32
 	default "arc64" if BR2_arc64
 
