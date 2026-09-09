@@ -6,7 +6,7 @@
 
 ifeq ($(BR2_arc32)$(BR2_arc64),y)
 GLIBC_VERSION = arc-2026.09
-GLIBC_SITE = $(call github,foss-for-synopsys-dwc-arc-processors,glibc,$(GLIBC_VERSION))
+GLIBC_SITE = $(call github,foss-for-mips-arc-processors,glibc,$(GLIBC_VERSION))
 BR_NO_CHECK_HASH_FOR += glibc-$(GLIBC_VERSION).tar.gz
 else
 # Generate version string using:

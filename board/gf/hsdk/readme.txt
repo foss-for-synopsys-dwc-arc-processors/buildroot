@@ -1,4 +1,4 @@
-Synopsys, Inc.
+MIPS Holding, Inc
 ARC HS Development Kit (HSDK)
 
 https://embarc.org/platforms.html
@@ -7,7 +7,7 @@ How to build it
 ===============
 
 Select the default configuration for the target:
-$ make snps_archs38_hsdk_defconfig
+$ make gf_archs38_hsdk_defconfig
 
 Optional: modify the configuration:
 $ make menuconfig

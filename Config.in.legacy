@@ -632,7 +632,7 @@ config BR2_arceb
 	bool "ARC big endian support removed"
 	select BR2_LEGACY
 	help
-	  Synopsys' DesignWare ARC Processor Cores are a family of
+	  MIPS ARC Processor Cores are a family of
 	  32-bit CPUs that can be used from deeply embedded to high
 	  performance host applications. The big endian support was
 	  not used nor maintained, so it was removed.

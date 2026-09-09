@@ -25,7 +25,7 @@ config BR2_arcle
 	bool "ARC (little endian)"
 	select BR2_USE_MMU
 	help
-	  Synopsys' DesignWare ARC Processor Cores are a family of
+	  MIPS ARC Processor Cores are a family of
 	  32-bit CPUs that can be used from deeply embedded to high
 	  performance host applications. Little endian.
 

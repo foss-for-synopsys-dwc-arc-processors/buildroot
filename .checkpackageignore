@@ -51,7 +51,7 @@ board/stmicroelectronics/common/stm32mp1xx/post-image.sh Shellcheck
 board/stmicroelectronics/stm32f429-disco/flash.sh Shellcheck
 board/stmicroelectronics/stm32f469-disco/flash_sd.sh Shellcheck
 board/stmicroelectronics/stm32f469-disco/flash_xip.sh Shellcheck
-board/synopsys/axs10x/post-build.sh Shellcheck
+board/gf/axs10x/post-build.sh Shellcheck
 board/technologic/ts4900/post-image.sh Shellcheck
 board/udoo/common/post-build.sh Shellcheck
 boot/afboot-stm32/0003-Makefile-disable-stack-protector.patch lib_patch.Upstream
@@ -149,11 +149,11 @@ configs/sipeed_maix_go_defconfig lib_defconfig.ForceCheckHash
 configs/sipeed_maix_go_sdcard_defconfig lib_defconfig.ForceCheckHash
 configs/sipeed_maixduino_defconfig lib_defconfig.ForceCheckHash
 configs/sipeed_maixduino_sdcard_defconfig lib_defconfig.ForceCheckHash
-configs/snps_arc700_axs101_defconfig lib_defconfig.ForceCheckHash
-configs/snps_arc700_nsim_defconfig lib_defconfig.ForceCheckHash
-configs/snps_archs38_axs103_defconfig lib_defconfig.ForceCheckHash
-configs/snps_archs38_haps_defconfig lib_defconfig.ForceCheckHash
-configs/snps_archs38_hsdk_defconfig lib_defconfig.ForceCheckHash
+configs/gf_arc700_axs101_defconfig lib_defconfig.ForceCheckHash
+configs/gf_arc700_nsim_defconfig lib_defconfig.ForceCheckHash
+configs/gf_archs38_axs103_defconfig lib_defconfig.ForceCheckHash
+configs/gf_archs38_haps_defconfig lib_defconfig.ForceCheckHash
+configs/gf_archs38_hsdk_defconfig lib_defconfig.ForceCheckHash
 configs/solidrun_clearfog_gt_8k_defconfig lib_defconfig.ForceCheckHash
 configs/solidrun_macchiatobin_defconfig lib_defconfig.ForceCheckHash
 configs/stm32mp157c_odyssey_defconfig lib_defconfig.ForceCheckHash

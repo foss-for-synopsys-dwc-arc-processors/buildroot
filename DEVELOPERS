@@ -273,7 +273,7 @@ F:	package/lsscsi/
 
 N:	ARC Maintainers <arc-buildroot@synopsys.com>
 F:	arch/Config.in.arc
-F:	board/synopsys/
+F:	board/gf/
 F:	configs/snps_arc700_axs101_defconfig
 F:	configs/snps_archs38_axs103_defconfig
 F:	configs/snps_archs38_haps_defconfig

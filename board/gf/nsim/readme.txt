@@ -3,7 +3,7 @@ How to build it
 
 Configure build for the selected nSIM target. For instance, for
 ARC700 nSIM target use the following defauilt configuration:
-$ make snps_arc700_nsim_defconfig
+$ make gf_arc700_nsim_defconfig
 
 Optionally modify the configuration:
 $ make menuconfig

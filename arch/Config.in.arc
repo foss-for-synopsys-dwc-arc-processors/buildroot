@@ -76,7 +76,7 @@ config BR2_ARCV3_SOFT_FLOAT
 	  This option uses software emulated floating point code for ARC
 	  cores with Floating-Point Unit not configured.
 
-# Hard Floating-Point Unit configuration is yet supported only for Synopsys
+# Hard Floating-Point Unit configuration is yet supported only for MIPS
 # ARCv3 64-bit targets and only for glibc and only for double-precision FPU.
 config BR2_ARCV3_HARD_FLOAT_DOUBLE
 	bool "Floating-Point Unit (double-precision)"
@@ -129,8 +129,8 @@ config BR2_READELF_ARCH_NAME
 	default "ARCompact"	if BR2_arc750d || BR2_arc770d
 	default "ARCv2"		if BR2_archs38 || BR2_archs38_64mpy || BR2_archs38_full
 	default "ARCv2"		if BR2_archs4x_rel31 || BR2_archs4x
-	default "Synopsys ARCv3 32-bit processor"	if BR2_arc32
-	default "Synopsys ARCv3 64-bit processor"	if BR2_arc64
+	default "ARCv3 32-bit processor"	if BR2_arc32
+	default "ARCv3 64-bit processor"	if BR2_arc64
 
 choice
 	prompt "MMU Page Size"
