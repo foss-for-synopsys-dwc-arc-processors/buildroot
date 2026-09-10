@@ -40,6 +40,7 @@ HOST_GCC_INITIAL_CONF_OPTS = \
 	--disable-threads \
 	--with-newlib \
 	--disable-largefile \
+	--disable-libatomic \
 	$(call qstrip,$(BR2_EXTRA_GCC_CONFIG_OPTIONS))
 
 HOST_GCC_INITIAL_CONF_ENV = \
